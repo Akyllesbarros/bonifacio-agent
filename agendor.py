@@ -77,20 +77,21 @@ class AgendorClient:
         owner_id: Optional[int] = None,
         value_tier: Optional[str] = None,
     ) -> Optional[int]:
-        """Cria um negócio no Agendor."""
+        """Cria um negócio no Agendor vinculado à pessoa.
+        Endpoint correto: POST /people/{person_id}/deals
+        """
         try:
             body: Dict[str, Any] = {
                 "title": title,
-                "personId": person_id,
-                "funnelId": funnel_id,
-                "stageId": stage_id,
+                "dealStage": stage_id,   # campo correto conforme docs Agendor
             }
             if owner_id:
-                body["ownerId"] = owner_id
+                body["allowedUsers"] = [owner_id]
             if value_tier:
                 body["description"] = f"Faixa de investimento: {value_tier}"
 
-            data = await self._post("/deals", body)
+            # Endpoint correto: negócio deve ser criado sob a pessoa
+            data = await self._post(f"/people/{person_id}/deals", body)
             deal_id = data.get("data", {}).get("id")
             log.info(f"[Agendor] Negócio criado: {title} → ID {deal_id}")
             return deal_id
