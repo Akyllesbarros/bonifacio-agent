@@ -1,8 +1,10 @@
+cat > nixpacks.toml << 'EOF'
 [phases.setup]
-nixPkgs = ["python311", "gcc"]
+nixPkgs = ["python311", "python311Packages.pip", "gcc"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt", "pip install greenlet"]
+cmds = ["pip3 install -r requirements.txt"]
 
 [start]
 cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+EOF
