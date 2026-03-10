@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Bonifácio · Agente IA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10;
+  --surface:#10131a;
+  --surface2:#161b26;
+  --surface3:#1e2535;
+  --border:#1f2940;
+  --gold:#c9a84c;
+  --gold2:#e8c96e;
+  --gold-dim:rgba(201,168,76,.12);
+  --text:#e8ecf4;
+  --text2:#8a96b0;
+  --text3:#4a5568;
+  --green:#2ecc8a;
+  --red:#e05c5c;
+  --blue:#4a9eff;
+  --font-display:'Cormorant Garamond',serif;
+  --font:'DM Sans',sans-serif;
+  --radius:10px;
+  --shadow:0 8px 32px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── HEADER ─────────────────────────────────────── */
+header{
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:0 24px;
+  height:60px;
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;
+  position:relative;
+}
+header::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);
+}
+.logo{
+  font-family:var(--font-display);
+  font-size:22px;font-weight:700;letter-spacing:.5px;
+  color:var(--gold2);
+  display:flex;align-items:center;gap:10px;
+}
+.logo-icon{
+  width:34px;height:34px;
+  background:linear-gradient(135deg,var(--gold),#8b5e1a);
+  border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;
+}
+.header-stats{
+  display:flex;align-items:center;gap:20px;
+}
+.stat-pill{
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:4px 14px;
+  font-size:12px;
+  color:var(--text2);
+  display:flex;align-items:center;gap:6px;
+}
+.stat-pill b{color:var(--text);font-weight:600}
+.ai-toggle{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:6px 14px;
+  cursor:pointer;
+  transition:all .2s;
+  font-size:13px;font-weight:500;
+}
+.ai-toggle:hover{border-color:var(--gold);color:var(--gold)}
+.ai-toggle.active{border-color:var(--green);color:var(--green)}
+.ai-toggle.paused{border-color:var(--red);color:var(--red)}
+.ai-dot{width:8px;height:8px;border-radius:50%;background:currentColor;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── LAYOUT ─────────────────────────────────────── */
+.app{display:flex;flex:1;overflow:hidden}
+
+/* ── SIDEBAR ─────────────────────────────────────── */
+.sidebar{
+  width:64px;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;
+  padding:16px 0;gap:8px;flex-shrink:0;
+}
+.nav-btn{
+  width:44px;height:44px;border-radius:10px;
+  background:transparent;border:none;cursor:pointer;
+  color:var(--text3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;transition:all .2s;position:relative;
+}
+.nav-btn:hover{background:var(--surface2);color:var(--text2)}
+.nav-btn.active{background:var(--gold-dim);color:var(--gold)}
+.nav-btn .tooltip{
+  position:absolute;left:54px;
+  background:#1e2535;border:1px solid var(--border);
+  color:var(--text);font-size:12px;padding:4px 10px;border-radius:6px;
+  white-space:nowrap;pointer-events:none;opacity:0;transition:.15s;z-index:99;
+}
+.nav-btn:hover .tooltip{opacity:1}
+
+/* ── PANELS ─────────────────────────────────────── */
+.panel{display:none;flex:1;overflow:hidden}
+.panel.active{display:flex}
+
+/* ── CONVERSATIONS PANEL ─────────────────────────── */
+#panel-chats{flex-direction:row}
+.conv-list{
+  width:300px;flex-shrink:0;
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.conv-list-header{
+  padding:16px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.conv-list-header h2{
+  font-family:var(--font-display);font-size:18px;font-weight:600;
+  color:var(--text);margin-bottom:10px;
+}
+.search-input{
+  width:100%;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:8px 12px;border-radius:8px;
+  font-family:var(--font);font-size:13px;outline:none;transition:.2s;
+}
+.search-input:focus{border-color:var(--gold)}
+.search-input::placeholder{color:var(--text3)}
+.conv-items{overflow-y:auto;flex:1}
+.conv-item{
+  padding:14px 16px;border-bottom:1px solid var(--border);
+  cursor:pointer;transition:.15s;position:relative;
+  display:flex;gap:12px;align-items:flex-start;
+}
+.conv-item:hover{background:var(--surface2)}
+.conv-item.selected{background:var(--gold-dim);border-left:2px solid var(--gold)}
+.conv-avatar{
+  width:40px;height:40px;border-radius:50%;
+  background:linear-gradient(135deg,var(--surface3),var(--border));
+  display:flex;align-items:center;justify-content:center;
+  font-weight:600;font-size:15px;color:var(--gold);flex-shrink:0;
+}
+.conv-info{flex:1;min-width:0}
+.conv-name{font-weight:500;color:var(--text);font-size:13.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-preview{color:var(--text2);font-size:12px;margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.conv-time{font-size:11px;color:var(--text3)}
+.stage-badge{
+  font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;
+  text-transform:uppercase;letter-spacing:.4px;
+}
+.stage-0{background:rgba(74,166,255,.15);color:var(--blue)}
+.stage-1{background:rgba(74,166,255,.15);color:var(--blue)}
+.stage-2{background:rgba(201,168,76,.15);color:var(--gold)}
+.stage-3{background:rgba(201,168,76,.15);color:var(--gold)}
+.stage-4{background:rgba(46,204,138,.15);color:var(--green)}
+.ai-off-badge{
+  font-size:10px;padding:2px 6px;border-radius:8px;
+  background:rgba(224,92,92,.15);color:var(--red);font-weight:600;
+}
+
+/* ── CHAT VIEW ────────────────────────────────────── */
+.chat-view{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.chat-empty{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  color:var(--text3);flex-direction:column;gap:12px;
+}
+.chat-empty .icon{font-size:48px;opacity:.3}
+.chat-empty p{font-size:15px}
+
+.chat-header{
+  padding:14px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;
+}
+.chat-header-info{display:flex;align-items:center;gap:12px}
+.chat-header-avatar{
+  width:38px;height:38px;border-radius:50%;
+  background:linear-gradient(135deg,var(--gold-dim),var(--border));
+  display:flex;align-items:center;justify-content:center;
+  color:var(--gold);font-weight:700;font-size:14px;
+}
+.chat-header-name{font-weight:600;font-size:15px;color:var(--text)}
+.chat-header-phone{font-size:12px;color:var(--text2);margin-top:2px}
+.chat-actions{display:flex;gap:8px}
+.btn{
+  padding:7px 14px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface2);color:var(--text2);font-family:var(--font);
+  font-size:12px;font-weight:500;cursor:pointer;transition:.15s;
+  display:flex;align-items:center;gap:6px;
+}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.danger:hover{border-color:var(--red);color:var(--red)}
+.btn.success{border-color:var(--green);color:var(--green)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:#000;font-weight:600}
+.btn.primary:hover{background:var(--gold2)}
+
+.crm-badge{
+  display:flex;align-items:center;gap:6px;
+  background:rgba(46,204,138,.1);border:1px solid rgba(46,204,138,.3);
+  border-radius:8px;padding:4px 10px;font-size:11px;color:var(--green);
+}
+
+.messages-container{
+  flex:1;overflow-y:auto;padding:20px;
+  display:flex;flex-direction:column;gap:10px;
+}
+.msg{max-width:70%;display:flex;flex-direction:column;gap:3px}
+.msg.in{align-self:flex-start}
+.msg.out{align-self:flex-end}
+.msg-bubble{
+  padding:10px 14px;border-radius:14px;
+  line-height:1.55;font-size:13.5px;word-wrap:break-word;white-space:pre-wrap;
+}
+.msg.in .msg-bubble{
+  background:var(--surface2);border:1px solid var(--border);
+  border-bottom-left-radius:4px;color:var(--text);
+}
+.msg.out .msg-bubble{
+  background:linear-gradient(135deg,#1e3a2a,#1a3320);
+  border:1px solid rgba(46,204,138,.2);
+  border-bottom-right-radius:4px;color:#d4f0e4;
+}
+.msg-time{font-size:10px;color:var(--text3);padding:0 4px}
+.msg.out .msg-time{text-align:right}
+
+.chat-input-area{
+  padding:16px 20px;border-top:1px solid var(--border);
+  display:flex;gap:10px;flex-shrink:0;
+}
+.chat-textarea{
+  flex:1;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:10px 14px;border-radius:10px;
+  font-family:var(--font);font-size:13.5px;resize:none;outline:none;
+  transition:.2s;min-height:44px;max-height:120px;
+}
+.chat-textarea:focus{border-color:var(--gold)}
+.chat-textarea::placeholder{color:var(--text3)}
+.send-btn{
+  width:44px;height:44px;border-radius:10px;
+  background:var(--gold);border:none;cursor:pointer;
+  color:#000;font-size:18px;transition:.2s;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.send-btn:hover{background:var(--gold2)}
+
+/* ── LEAD DETAIL PANEL ─────────────────────────── */
+.lead-detail{
+  width:260px;border-left:1px solid var(--border);
+  padding:20px;overflow-y:auto;flex-shrink:0;
+  display:flex;flex-direction:column;gap:16px;
+}
+.detail-section{display:flex;flex-direction:column;gap:8px}
+.detail-title{
+  font-size:10px;font-weight:600;text-transform:uppercase;
+  letter-spacing:1px;color:var(--text3);
+}
+.detail-row{display:flex;flex-direction:column;gap:3px}
+.detail-label{font-size:11px;color:var(--text3)}
+.detail-value{font-size:13px;color:var(--text);font-weight:500}
+.stage-progress{
+  display:flex;flex-direction:column;gap:6px;
+}
+.progress-step{
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--text3);
+}
+.progress-step.done{color:var(--green)}
+.progress-step.current{color:var(--gold)}
+.progress-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;
+}
+.progress-step.done .progress-dot{background:var(--green)}
+.progress-step.current .progress-dot{background:var(--gold);box-shadow:0 0 6px var(--gold)}
+
+/* ── BLAST PANEL ─────────────────────────────────── */
+#panel-blast{flex-direction:column;padding:32px;gap:24px;overflow-y:auto}
+.panel-title{font-family:var(--font-display);font-size:26px;font-weight:600;color:var(--gold2)}
+.panel-desc{color:var(--text2);font-size:14px;line-height:1.6}
+.blast-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:900px}
+.form-group{display:flex;flex-direction:column;gap:8px}
+.form-label{font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px}
+.form-input,.form-textarea{
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:10px 14px;border-radius:10px;
+  font-family:var(--font);font-size:13.5px;outline:none;transition:.2s;
+}
+.form-input:focus,.form-textarea:focus{border-color:var(--gold)}
+.form-textarea{resize:vertical;min-height:180px}
+.blast-footer{display:flex;align-items:center;gap:16px;max-width:900px}
+.blast-result{
+  flex:1;padding:10px 16px;border-radius:8px;
+  background:var(--surface2);border:1px solid var(--border);
+  font-size:13px;color:var(--text2);min-height:40px;display:flex;align-items:center;
+}
+
+/* ── SETTINGS PANEL ──────────────────────────────── */
+#panel-settings{flex-direction:column;padding:32px;gap:24px;overflow-y:auto}
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px}
+.settings-section{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:20px;
+  display:flex;flex-direction:column;gap:14px;
+}
+.settings-section-title{
+  font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--gold);
+  display:flex;align-items:center;gap:8px;margin-bottom:4px;
+}
+.settings-full{grid-column:1/-1}
+.agendor-selects{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.agendor-selects select{
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:8px 12px;border-radius:8px;
+  font-family:var(--font);font-size:13px;outline:none;cursor:pointer;
+}
+.save-btn{
+  padding:10px 24px;border-radius:10px;
+  background:var(--gold);border:none;color:#000;
+  font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;
+  transition:.2s;
+}
+.save-btn:hover{background:var(--gold2)}
+.webhook-url{
+  background:var(--surface3);border:1px solid var(--border);
+  border-radius:8px;padding:10px 14px;
+  font-family:'Courier New',monospace;font-size:12px;color:var(--gold);
+  word-break:break-all;
+}
+.copy-btn{
+  font-size:11px;padding:4px 10px;border-radius:6px;
+  background:var(--surface3);border:1px solid var(--border);
+  color:var(--text2);cursor:pointer;margin-top:6px;
+}
+.copy-btn:hover{color:var(--gold)}
+
+/* ── SCROLLBAR ──────────────────────────────────── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+/* ── LOADING / TOAST ─────────────────────────────── */
+.toast{
+  position:fixed;bottom:24px;right:24px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:10px;padding:12px 20px;font-size:13px;
+  color:var(--text);z-index:999;
+  transform:translateY(80px);opacity:0;
+  transition:all .3s cubic-bezier(.34,1.56,.64,1);
+  display:flex;align-items:center;gap:10px;
+}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{border-color:rgba(46,204,138,.4);color:var(--green)}
+.toast.error{border-color:rgba(224,92,92,.4);color:var(--red)}
+
+.loading{display:inline-block;width:14px;height:14px;
+  border:2px solid var(--border);border-top-color:var(--gold);
+  border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.divider{height:1px;background:var(--border);margin:8px 0}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">B</div>
+    Bonifácio <span style="color:var(--text2);font-size:16px;font-weight:300">· Agente IA</span>
+  </div>
+  <div class="header-stats">
+    <div class="stat-pill">Leads: <b id="stat-total">—</b></div>
+    <div class="stat-pill">Qualificados: <b id="stat-qualified">—</b></div>
+    <div class="stat-pill">Em andamento: <b id="stat-inprogress">—</b></div>
+    <button class="ai-toggle" id="ai-toggle-btn" onclick="toggleGlobalAI()">
+      <span class="ai-dot"></span>
+      <span id="ai-toggle-label">IA Global: —</span>
+    </button>
+  </div>
+</header>
+
+<!-- APP BODY -->
+<div class="app">
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <button class="nav-btn active" id="nav-chats" onclick="setPanel('chats')">
+      💬<span class="tooltip">Conversas</span>
+    </button>
+    <button class="nav-btn" id="nav-blast" onclick="setPanel('blast')">
+      📢<span class="tooltip">Disparo em Massa</span>
+    </button>
+    <button class="nav-btn" id="nav-settings" onclick="setPanel('settings')">
+      ⚙️<span class="tooltip">Configurações</span>
+    </button>
+  </nav>
+
+  <!-- CONVERSATIONS PANEL -->
+  <div class="panel active" id="panel-chats">
+    <!-- List -->
+    <div class="conv-list">
+      <div class="conv-list-header">
+        <h2>Conversas</h2>
+        <input class="search-input" type="text" placeholder="🔍  Buscar por nome ou telefone..."
+               oninput="filterConversations(this.value)">
+      </div>
+      <div class="conv-items" id="conv-list-items">
+        <div style="padding:24px;text-align:center;color:var(--text3)">
+          <div class="loading" style="margin:0 auto 12px"></div>
+          Carregando…
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat view -->
+    <div class="chat-view" id="chat-view">
+      <div class="chat-empty">
+        <div class="icon">🌎</div>
+        <p>Selecione uma conversa</p>
+      </div>
+    </div>
+
+    <!-- Lead detail (shown when conversation selected) -->
+    <div class="lead-detail" id="lead-detail" style="display:none">
+      <div class="detail-section">
+        <div class="detail-title">Lead</div>
+        <div class="detail-row"><div class="detail-label">Nome</div><div class="detail-value" id="d-name">—</div></div>
+        <div class="detail-row"><div class="detail-label">Telefone</div><div class="detail-value" id="d-phone">—</div></div>
+        <div class="detail-row"><div class="detail-label">Faixa de Valor</div><div class="detail-value" id="d-tier">—</div></div>
+      </div>
+      <div class="divider"></div>
+      <div class="detail-section">
+        <div class="detail-title">Qualificação</div>
+        <div class="stage-progress" id="d-stages">
+          <div class="progress-step" data-s="0"><div class="progress-dot"></div>Contato iniciado</div>
+          <div class="progress-step" data-s="1"><div class="progress-dot"></div>Nome coletado</div>
+          <div class="progress-step" data-s="2"><div class="progress-dot"></div>Status de investimento</div>
+          <div class="progress-step" data-s="3"><div class="progress-dot"></div>Faixa de valor</div>
+          <div class="progress-step" data-s="4"><div class="progress-dot"></div>✅ Qualificado</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="detail-section">
+        <div class="detail-title">CRM Agendor</div>
+        <div class="detail-row"><div class="detail-label">Deal ID</div><div class="detail-value" id="d-deal">—</div></div>
+        <div class="detail-row"><div class="detail-label">Vendedor</div><div class="detail-value" id="d-seller">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BLAST PANEL -->
+  <div class="panel" id="panel-blast">
+    <div class="panel-title">📢 Disparo em Massa</div>
+    <p class="panel-desc">Envie uma mensagem personalizada para uma lista de contatos via WhatsApp Business API.</p>
+
+    <div class="blast-grid">
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">Mensagem</label>
+        <textarea class="form-textarea" id="blast-text" placeholder="Olá! Temos uma novidade exclusiva para você no Bonifácio Clube de Investidores..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Lista de Telefones <span style="color:var(--text3);font-weight:400">(um por linha)</span></label>
+        <textarea class="form-textarea" id="blast-phones" placeholder="5511999990001&#10;5521988880002&#10;5531977770003"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Preview</label>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;min-height:180px;position:relative">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+            <div style="width:30px;height:30px;border-radius:50%;background:var(--gold-dim);display:flex;align-items:center;justify-content:center;font-size:13px">B</div>
+            <span style="font-size:12px;font-weight:600;color:var(--gold)">Bonifácio</span>
+          </div>
+          <div id="blast-preview" style="font-size:13px;color:var(--text);line-height:1.6;white-space:pre-wrap;background:var(--surface3);padding:12px;border-radius:10px">Sua mensagem aparecerá aqui...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="blast-footer">
+      <button class="btn primary" onclick="sendBlast()">🚀 Enviar Disparo</button>
+      <div class="blast-result" id="blast-result">Aguardando envio…</div>
+    </div>
+  </div>
+
+  <!-- SETTINGS PANEL -->
+  <div class="panel" id="panel-settings">
+    <div class="panel-title">⚙️ Configurações</div>
+
+    <div class="settings-grid">
+      <!-- WhatsApp -->
+      <div class="settings-section">
+        <div class="settings-section-title">📱 WhatsApp Business</div>
+        <div class="form-group">
+          <label class="form-label">Phone Number ID</label>
+          <input class="form-input" id="s-wa-phone" placeholder="Ex: 123456789012345">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Access Token</label>
+          <input class="form-input" type="password" id="s-wa-token" placeholder="EAABxxxx...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Verify Token (Webhook)</label>
+          <input class="form-input" id="s-wa-verify" placeholder="bonifacio_verify">
+        </div>
+        <div>
+          <div class="detail-label" style="margin-bottom:6px">URL do Webhook (configurar na Meta)</div>
+          <div class="webhook-url" id="webhook-url">https://seudominio.com/webhook</div>
+          <button class="copy-btn" onclick="copyWebhook()">📋 Copiar URL</button>
+        </div>
+      </div>
+
+      <!-- Anthropic -->
+      <div class="settings-section">
+        <div class="settings-section-title">🤖 Anthropic (Claude)</div>
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" type="password" id="s-anthropic-key" placeholder="sk-ant-...">
+        </div>
+        <div style="background:var(--gold-dim);border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:12px;font-size:12px;color:var(--text2);line-height:1.6">
+          A Júlia utiliza o modelo <b style="color:var(--gold)">claude-sonnet-4</b> para garantir respostas naturais e elegantes no pré-atendimento.
+        </div>
+      </div>
+
+      <!-- Agendor -->
+      <div class="settings-section settings-full">
+        <div class="settings-section-title">📊 Agendor CRM</div>
+        <div class="settings-grid" style="margin-top:8px">
+          <div class="form-group">
+            <label class="form-label">Token da API</label>
+            <input class="form-input" type="password" id="s-agendor-token" placeholder="seu_token_agendor">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Funil de Vendas</label>
+            <select class="form-input" id="s-funnel" onchange="loadStages(this.value)">
+              <option value="">— Selecione (salve o token primeiro) —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Etapa Inicial (Novo Lead)</label>
+            <div style="display:flex;gap:8px">
+              <select class="form-input" id="s-stage-initial" style="flex:1">
+                <option value="">— Selecione o funil primeiro —</option>
+              </select>
+              <button class="btn" onclick="reloadStages()" title="Recarregar etapas">🔄</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Etapa Qualificado</label>
+            <div style="display:flex;gap:8px">
+              <select class="form-input" id="s-stage-qualified" style="flex:1">
+                <option value="">— Selecione o funil primeiro —</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:4px">
+          <label class="form-label">Rodízio de Vendedores</label>
+          <p style="font-size:12px;color:var(--text2);margin:4px 0 10px">
+            Selecione os vendedores na ordem do rodízio. O sistema alterna entre eles a cada novo lead qualificado.
+          </p>
+          <div id="sellers-list" style="display:flex;flex-wrap:wrap;gap:8px">
+            <button class="btn" onclick="loadSellers()">🔄 Carregar Vendedores do Agendor</button>
+          </div>
+          <input class="form-input" id="s-salespeople-ids" placeholder="IDs separados por vírgula: 5,8" style="margin-top:10px">
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;max-width:800px">
+      <button class="save-btn" onclick="saveSettings()">💾 Salvar Configurações</button>
+      <button class="btn" onclick="loadAgendorFunnels()">🔄 Recarregar funis do Agendor</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────
+let conversations = [];
+let selectedConvId = null;
+let msgPollInterval = null;
+let convPollInterval = null;
+
+// ─── Navigation ──────────────────────────────────────────────────────────
+function setPanel(name){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  if(name==='settings') loadSettingsUI();
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────
+function toast(msg, type=''){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='toast show '+(type||'');
+  setTimeout(()=>el.className='toast',3000);
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────
+async function loadStats(){
+  try{
+    const d=await fetch('/api/stats').then(r=>r.json());
+    document.getElementById('stat-total').textContent=d.total_leads;
+    document.getElementById('stat-qualified').textContent=d.qualified;
+    document.getElementById('stat-inprogress').textContent=d.in_progress;
+    const btn=document.getElementById('ai-toggle-btn');
+    const lbl=document.getElementById('ai-toggle-label');
+    if(d.ai_global_active){
+      btn.className='ai-toggle active';
+      lbl.textContent='IA Global: ON';
+    } else {
+      btn.className='ai-toggle paused';
+      lbl.textContent='IA Global: OFF';
+    }
+  }catch(e){}
+}
+
+async function toggleGlobalAI(){
+  await fetch('/api/settings/ai-toggle',{method:'POST'});
+  loadStats();
+  toast('Status da IA alterado ✓','success');
+}
+
+// ─── Conversations ────────────────────────────────────────────────────────
+const STAGE_LABELS=['Iniciado','Nome','Investimento','Valor','✅ Qualificado'];
+function stageLabel(s){return STAGE_LABELS[s]||'?'}
+
+function avatarLetter(name){
+  if(!name) return '?';
+  const p=name.trim().split(' ');
+  return p.length>1 ? p[0][0]+p[1][0] : p[0].substring(0,2);
+}
+
+function formatTime(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  const now=new Date();
+  const diff=now-d;
+  if(diff<60000) return 'agora';
+  if(diff<3600000) return Math.floor(diff/60000)+'m';
+  if(diff<86400000) return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+}
+
+async function loadConversations(){
+  try{
+    conversations=await fetch('/api/conversations').then(r=>r.json());
+    renderConversations(conversations);
+  }catch(e){}
+}
+
+function renderConversations(list){
+  const el=document.getElementById('conv-list-items');
+  if(!list.length){
+    el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3)">Nenhuma conversa ainda.<br><small>Aguardando mensagens no WhatsApp…</small></div>';
+    return;
+  }
+  el.innerHTML=list.map(c=>`
+    <div class="conv-item${c.id===selectedConvId?' selected':''}" onclick="selectConv(${c.id})">
+      <div class="conv-avatar">${avatarLetter(c.name)}</div>
+      <div class="conv-info">
+        <div class="conv-name">${esc(c.name)}</div>
+        <div class="conv-preview">${c.last_message_direction==='out'?'↩ ':''} ${esc(c.last_message||'—')}</div>
+      </div>
+      <div class="conv-meta">
+        <div class="conv-time">${formatTime(c.updated_at)}</div>
+        <span class="stage-badge stage-${c.stage}">${stageLabel(c.stage)}</span>
+        ${!c.ai_active?'<span class="ai-off-badge">IA off</span>':''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterConversations(q){
+  q=q.toLowerCase();
+  const filtered=conversations.filter(c=>
+    (c.name||'').toLowerCase().includes(q)||
+    (c.phone||'').includes(q)
+  );
+  renderConversations(filtered);
+}
+
+// ─── Select conversation ──────────────────────────────────────────────────
+async function selectConv(id){
+  selectedConvId=id;
+  const conv=conversations.find(c=>c.id===id);
+  if(!conv) return;
+  renderConversations(conversations);
+  loadMessages(id, conv);
+  renderLeadDetail(conv);
+  if(msgPollInterval) clearInterval(msgPollInterval);
+  msgPollInterval=setInterval(()=>loadMessages(id,conv),3000);
+}
+
+async function loadMessages(id, conv){
+  try{
+    const msgs=await fetch(`/api/conversations/${id}/messages`).then(r=>r.json());
+    renderMessages(msgs, conv);
+  }catch(e){}
+}
+
+function renderMessages(msgs, conv){
+  const view=document.getElementById('chat-view');
+  view.innerHTML=`
+    <div class="chat-header">
+      <div class="chat-header-info">
+        <div class="chat-header-avatar">${avatarLetter(conv.name)}</div>
+        <div>
+          <div class="chat-header-name">${esc(conv.name)}</div>
+          <div class="chat-header-phone">${conv.phone}</div>
+        </div>
+      </div>
+      <div class="chat-actions">
+        ${conv.agendor_deal_id?`<div class="crm-badge">✅ Agendor #${conv.agendor_deal_id}</div>`:''}
+        <button class="btn ${conv.ai_active?'danger':''}" onclick="toggleAI(${conv.id})">
+          ${conv.ai_active?'🛑 Parar IA':'🤖 Retomar IA'}
+        </button>
+      </div>
+    </div>
+    <div class="messages-container" id="msg-container">
+      ${msgs.map(m=>`
+        <div class="msg ${m.direction}">
+          <div class="msg-bubble">${esc(m.content)}</div>
+          <div class="msg-time">${formatTime(m.created_at)}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="chat-input-area" ${conv.ai_active?'style="opacity:.6"':''}>
+      <textarea class="chat-textarea" id="manual-input" rows="1"
+        placeholder="${conv.ai_active?'⚠️ IA ativa – pause para responder manualmente':'💬 Digite sua resposta...'}"
+        ${conv.ai_active?'disabled':''}
+        onkeydown="handleMsgKey(event,${conv.id})"
+        oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+      <button class="send-btn" onclick="sendManual(${conv.id})" ${conv.ai_active?'disabled':''}>➤</button>
+    </div>
+  `;
+  document.getElementById('lead-detail').style.display='flex';
+  // scroll to bottom
+  const mc=document.getElementById('msg-container');
+  if(mc) mc.scrollTop=mc.scrollHeight;
+}
+
+function handleMsgKey(e, id){
+  if(e.key==='Enter' && !e.shiftKey){e.preventDefault();sendManual(id)}
+}
+
+async function sendManual(id){
+  const inp=document.getElementById('manual-input');
+  if(!inp) return;
+  const text=inp.value.trim();
+  if(!text) return;
+  inp.value=''; inp.style.height='auto';
+  try{
+    await fetch(`/api/conversations/${id}/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    await loadConversations();
+    const conv=conversations.find(c=>c.id===id);
+    if(conv) await loadMessages(id,conv);
+  }catch(e){toast('Erro ao enviar mensagem','error')}
+}
+
+async function toggleAI(id){
+  try{
+    const d=await fetch(`/api/conversations/${id}/toggle-ai`,{method:'POST'}).then(r=>r.json());
+    toast(d.ai_active?'IA reativada para este contato ✓':'IA pausada para este contato ✓',
+          d.ai_active?'success':'');
+    await loadConversations();
+    const conv=conversations.find(c=>c.id===id);
+    if(conv) renderMessages(await fetch(`/api/conversations/${id}/messages`).then(r=>r.json()), conv);
+  }catch(e){toast('Erro','error')}
+}
+
+// ─── Lead detail ──────────────────────────────────────────────────────────
+function renderLeadDetail(conv){
+  document.getElementById('d-name').textContent=conv.name||'—';
+  document.getElementById('d-phone').textContent=conv.phone;
+  document.getElementById('d-tier').textContent=conv.value_tier||'Não informado';
+  document.getElementById('d-deal').textContent=conv.agendor_deal_id?`#${conv.agendor_deal_id}`:'Pendente';
+  document.getElementById('d-seller').textContent=conv.agendor_salesperson_id?`ID ${conv.agendor_salesperson_id}`:'—';
+  // stage progress
+  document.querySelectorAll('.progress-step').forEach(el=>{
+    const s=parseInt(el.dataset.s);
+    el.classList.remove('done','current');
+    if(s < conv.stage) el.classList.add('done');
+    else if(s === conv.stage) el.classList.add('current');
+  });
+}
+
+// ─── Blast ────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',()=>{
+  const blastText=document.getElementById('blast-text');
+  const blastPrev=document.getElementById('blast-preview');
+  if(blastText) blastText.addEventListener('input',()=>{
+    blastPrev.textContent=blastText.value||'Sua mensagem aparecerá aqui...';
+  });
+});
+
+async function sendBlast(){
+  const text=document.getElementById('blast-text').value.trim();
+  const raw=document.getElementById('blast-phones').value;
+  const phones=raw.split(/[\n,;]/).map(p=>p.trim()).filter(Boolean);
+  if(!text||!phones.length){toast('Preencha a mensagem e os telefones','error');return;}
+  const res=document.getElementById('blast-result');
+  res.innerHTML='<div class="loading"></div> Enviando…';
+  try{
+    const d=await fetch('/api/blast',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phones,text})}).then(r=>r.json());
+    res.textContent=`✅ Enviado: ${d.sent}  ❌ Falhou: ${d.failed}`;
+    toast(`Disparo concluído: ${d.sent} enviados`,'success');
+  }catch(e){res.textContent='Erro ao enviar';toast('Erro no disparo','error')}
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────
+async function loadSettingsUI(){
+  try{
+    const d=await fetch('/api/settings').then(r=>r.json());
+    document.getElementById('s-wa-phone').value=d.wa_phone_number_id||'';
+    document.getElementById('s-wa-token').value=d.wa_access_token||'';
+    document.getElementById('s-wa-verify').value=d.wa_verify_token||'';
+    document.getElementById('s-anthropic-key').value=d.anthropic_api_key||'';
+    document.getElementById('s-agendor-token').value=d.agendor_api_token||'';
+    document.getElementById('s-salespeople-ids').value=d.agendor_salespeople_ids||'';
+    document.getElementById('webhook-url').textContent=location.origin+'/webhook';
+    if(d.agendor_funnel_id) {
+      await loadAgendorFunnels();
+      document.getElementById('s-funnel').value=d.agendor_funnel_id;
+      await loadStages(d.agendor_funnel_id);
+      document.getElementById('s-stage-initial').value=d.agendor_stage_initial||'';
+      document.getElementById('s-stage-qualified').value=d.agendor_stage_qualified||'';
+    }
+  }catch(e){}
+}
+
+async function saveSettings(){
+  const body={
+    wa_phone_number_id:document.getElementById('s-wa-phone').value,
+    wa_access_token:document.getElementById('s-wa-token').value,
+    wa_verify_token:document.getElementById('s-wa-verify').value,
+    anthropic_api_key:document.getElementById('s-anthropic-key').value,
+    agendor_api_token:document.getElementById('s-agendor-token').value,
+    agendor_funnel_id:document.getElementById('s-funnel').value,
+    agendor_stage_initial:document.getElementById('s-stage-initial').value,
+    agendor_stage_qualified:document.getElementById('s-stage-qualified').value,
+    agendor_salespeople_ids:document.getElementById('s-salespeople-ids').value,
+  };
+  try{
+    await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    toast('Configurações salvas com sucesso ✓','success');
+  }catch(e){toast('Erro ao salvar','error')}
+}
+
+async function reloadStages(){
+  const funnelId=document.getElementById('s-funnel').value;
+  if(!funnelId){toast('Selecione um funil primeiro','error');return;}
+  await loadStages(funnelId);
+  toast('Etapas recarregadas ✓','success');
+}
+
+async function loadAgendorFunnels(){
+  try{
+    const funnels=await fetch('/api/agendor/funnels').then(r=>r.json());
+    const sel=document.getElementById('s-funnel');
+    sel.innerHTML='<option value="">— Selecione —</option>'+
+      funnels.map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('');
+    if(funnels.length) toast(`${funnels.length} funis carregados`,'success');
+  }catch(e){toast('Erro ao carregar funis','error')}
+}
+
+async function loadStages(funnelId){
+  if(!funnelId) return;
+  try{
+    const stages=await fetch(`/api/agendor/funnels/${funnelId}/stages`).then(r=>r.json());
+    const opts='<option value="">— Selecione —</option>'+
+      stages.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    document.getElementById('s-stage-initial').innerHTML=opts;
+    document.getElementById('s-stage-qualified').innerHTML=opts;
+  }catch(e){}
+}
+
+async function loadSellers(){
+  try{
+    const users=await fetch('/api/agendor/users').then(r=>r.json());
+    const el=document.getElementById('sellers-list');
+    el.innerHTML=users.map(u=>`
+      <label style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;color:var(--text2)">
+        <input type="checkbox" value="${u.id}" onchange="updateSellerIds()">
+        ${esc(u.name||u.email)}
+      </label>
+    `).join('')+'<button class="btn" onclick="loadSellers()" style="margin-left:4px">🔄</button>';
+    // pre-check existing
+    const existing=(document.getElementById('s-salespeople-ids').value||'').split(',').map(s=>s.trim());
+    el.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+      if(existing.includes(cb.value)) cb.checked=true;
+    });
+  }catch(e){toast('Erro ao carregar vendedores','error')}
+}
+
+function updateSellerIds(){
+  const checked=[...document.querySelectorAll('#sellers-list input[type=checkbox]:checked')].map(c=>c.value);
+  document.getElementById('s-salespeople-ids').value=checked.join(',');
+}
+
+function copyWebhook(){
+  navigator.clipboard.writeText(document.getElementById('webhook-url').textContent);
+  toast('URL copiada ✓','success');
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────
+function esc(s){
+  if(!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+loadStats();
+loadConversations();
+convPollInterval=setInterval(()=>{loadConversations();loadStats();},5000);
+</script>
+</body>
+</html>
