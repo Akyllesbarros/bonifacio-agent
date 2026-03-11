@@ -220,9 +220,10 @@ async def _sync_to_agendor(conv_id: int, db_session: AsyncSession):
         crm = AgendorClient(agendor_token)
         name = conv.name or conv.phone
 
-        # 1. Criar ou atualizar pessoa (upsert – sem duplicatas)
-        person_id = await crm.upsert_person(name, conv.phone)
+        # 1. Buscar pessoa pelo telefone; se não existir, criar
+        person_id = await crm.get_or_create_person(name, conv.phone)
         if not person_id:
+            log.error("[CRM] Falha ao obter/criar pessoa no Agendor")
             return
 
         # 2. Atribuir vendedor
@@ -243,7 +244,7 @@ async def _sync_to_agendor(conv_id: int, db_session: AsyncSession):
 
         # 4. Mover para etapa "Qualificado"
         if stage_qualified:
-            await crm.move_deal_stage(deal_id, stage_qualified)
+            await crm.move_deal_stage(deal_id, stage_qualified, funnel_id=funnel_id)
 
         # 5. Adicionar nota com histórico
         r2 = await db.execute(

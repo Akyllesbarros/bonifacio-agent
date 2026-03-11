@@ -1,7 +1,9 @@
 """
 Agendor CRM – cliente assíncrono
-Endpoints confirmados via cURL oficial (v3):
-  POST /people/upsert                → cria ou atualiza pessoa
+Endpoints 100% confirmados via cURL testado em produção:
+
+  POST /people                       → cria pessoa (NÃO usar /upsert)
+  GET  /people?q=<phone>             → busca pessoa por telefone
   POST /people/{person_id}/deals     → cria negócio vinculado à pessoa
   PUT  /deals/{deal_id}/stage        → move negócio para outra etapa/funil
   POST /deals/{deal_id}/tasks        → cria nota no histórico (só {"text": "..."})
@@ -44,33 +46,6 @@ class AgendorClient:
             return r.json()
 
     # ─── People ─────────────────────────────────────────────────────────────
-    async def upsert_person(self, name: str, phone: str, owner_id: Optional[int] = None) -> Optional[int]:
-        """
-        Cria ou atualiza pessoa. Telefone vai em contact.mobile (não mobilePhone).
-        Responsável: ownerUser (não allowedUsers).
-        """
-        try:
-            phone_clean = "".join(c for c in phone if c.isdigit())
-            body: Dict[str, Any] = {
-                "name": name,
-                "contact": {
-                    "mobile": phone_clean,
-                    "whatsapp": f"+{phone_clean}",
-                },
-            }
-            if owner_id:
-                body["ownerUser"] = owner_id
-            else:
-                body["allowToAllUsers"] = True
-
-            data = await self._post("/people/upsert", body)
-            person_id = data.get("data", {}).get("id")
-            log.info(f"[Agendor] Pessoa upsert: {name} → ID {person_id}")
-            return person_id
-        except Exception as e:
-            log.error(f"[Agendor] Erro ao criar/atualizar pessoa: {e}")
-            return None
-
     async def find_person_by_phone(self, phone: str) -> Optional[int]:
         """Busca pessoa existente pelo telefone."""
         try:
@@ -78,10 +53,45 @@ class AgendorClient:
             data = await self._get("/people", {"q": phone_clean})
             people = data.get("data", [])
             if people:
-                return people[0]["id"]
+                pid = people[0]["id"]
+                log.info(f"[Agendor] Pessoa encontrada pelo telefone: ID {pid}")
+                return pid
         except Exception as e:
             log.error(f"[Agendor] Erro ao buscar pessoa: {e}")
         return None
+
+    async def create_person(self, name: str, phone: str) -> Optional[int]:
+        """
+        Cria pessoa no Agendor.
+        Endpoint: POST /people  (NÃO /people/upsert – retorna 400)
+        Campos confirmados: contact.mobile, contact.work, contact.whatsapp
+        """
+        try:
+            phone_clean = "".join(c for c in phone if c.isdigit())
+            phone_ddi = f"+{phone_clean}"
+            body: Dict[str, Any] = {
+                "name": name,
+                "allowToAllUsers": True,
+                "contact": {
+                    "work": phone_clean,
+                    "mobile": phone_clean,
+                    "whatsapp": phone_ddi,
+                },
+            }
+            data = await self._post("/people", body)
+            person_id = data.get("data", {}).get("id")
+            log.info(f"[Agendor] Pessoa criada: {name} → ID {person_id}")
+            return person_id
+        except Exception as e:
+            log.error(f"[Agendor] Erro ao criar pessoa: {e}")
+            return None
+
+    async def get_or_create_person(self, name: str, phone: str) -> Optional[int]:
+        """Busca pessoa pelo telefone; se não encontrar, cria."""
+        person_id = await self.find_person_by_phone(phone)
+        if person_id:
+            return person_id
+        return await self.create_person(name, phone)
 
     # ─── Deals ──────────────────────────────────────────────────────────────
     async def create_deal(
@@ -96,15 +106,16 @@ class AgendorClient:
         """
         Cria negócio vinculado à pessoa.
         Endpoint: POST /people/{person_id}/deals
-        Responsável: ownerUser (não allowedUsers).
+        Campos confirmados via cURL: title, dealStatusText, funnel, dealStage, allowToAllUsers
         """
         try:
             body: Dict[str, Any] = {
                 "title": title,
+                "dealStatusText": "ongoing",
+                "funnel": funnel_id,
                 "dealStage": stage_id,
+                "allowToAllUsers": True,
             }
-            if owner_id:
-                body["ownerUser"] = owner_id
             if value_tier:
                 body["description"] = f"Faixa de investimento: {value_tier}"
 
@@ -119,7 +130,7 @@ class AgendorClient:
     async def move_deal_stage(self, deal_id: int, stage_id: int, funnel_id: Optional[int] = None) -> bool:
         """
         Move negócio para outra etapa.
-        Endpoint CORRETO: PUT /deals/{id}/stage  (não PUT /deals/{id})
+        Endpoint CORRETO: PUT /deals/{id}/stage
         """
         try:
             body: Dict[str, Any] = {"dealStage": stage_id}
