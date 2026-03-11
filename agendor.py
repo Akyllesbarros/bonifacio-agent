@@ -1,20 +1,15 @@
 """
 Agendor CRM – cliente assíncrono
-Docs: https://api.agendor.com.br/docs/
-Wiki: https://github.com/agendor/agendor-api-docs/wiki/Exemplos
-
-Endpoints confirmados (v3):
-  POST /people/upsert                → cria ou atualiza pessoa (sem duplicar)
-  GET  /people?q=<phone>             → busca pessoa por telefone
+Endpoints confirmados via cURL oficial (v3):
+  POST /people/upsert                → cria ou atualiza pessoa
   POST /people/{person_id}/deals     → cria negócio vinculado à pessoa
-  PUT  /deals/{deal_id}              → atualiza negócio (etapa, responsável)
-  POST /deals/{deal_id}/tasks        → cria tarefa/nota no negócio
-  GET  /funnels                      → lista funis (etapas vêm em 'dealStages')
+  PUT  /deals/{deal_id}/stage        → move negócio para outra etapa/funil
+  POST /deals/{deal_id}/tasks        → cria nota no histórico (só {"text": "..."})
+  GET  /funnels                      → lista funis (etapas em 'dealStages')
   GET  /users                        → lista usuários/vendedores
 """
 import httpx
 import logging
-from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 log = logging.getLogger("agendor")
@@ -49,20 +44,25 @@ class AgendorClient:
             return r.json()
 
     # ─── People ─────────────────────────────────────────────────────────────
-    async def upsert_person(self, name: str, phone: str) -> Optional[int]:
+    async def upsert_person(self, name: str, phone: str, owner_id: Optional[int] = None) -> Optional[int]:
         """
-        Cria ou atualiza uma pessoa no Agendor (sem duplicar).
-        Endpoint: POST /people/upsert
-        Telefone deve vir dentro de 'contact.mobilePhone'.
+        Cria ou atualiza pessoa. Telefone vai em contact.mobile (não mobilePhone).
+        Responsável: ownerUser (não allowedUsers).
         """
         try:
             phone_clean = "".join(c for c in phone if c.isdigit())
-            body = {
+            body: Dict[str, Any] = {
                 "name": name,
                 "contact": {
-                    "mobilePhone": phone_clean,
+                    "mobile": phone_clean,
+                    "whatsapp": f"+{phone_clean}",
                 },
             }
+            if owner_id:
+                body["ownerUser"] = owner_id
+            else:
+                body["allowToAllUsers"] = True
+
             data = await self._post("/people/upsert", body)
             person_id = data.get("data", {}).get("id")
             log.info(f"[Agendor] Pessoa upsert: {name} → ID {person_id}")
@@ -94,19 +94,17 @@ class AgendorClient:
         value_tier: Optional[str] = None,
     ) -> Optional[int]:
         """
-        Cria um negócio no Agendor vinculado à pessoa.
+        Cria negócio vinculado à pessoa.
         Endpoint: POST /people/{person_id}/deals
-        Campo da etapa: 'dealStage' (não 'stageId').
-        Campo do funil: 'funnel' (não 'funnelId').
+        Responsável: ownerUser (não allowedUsers).
         """
         try:
             body: Dict[str, Any] = {
                 "title": title,
                 "dealStage": stage_id,
-                "funnel": funnel_id,
             }
             if owner_id:
-                body["allowedUsers"] = [owner_id]
+                body["ownerUser"] = owner_id
             if value_tier:
                 body["description"] = f"Faixa de investimento: {value_tier}"
 
@@ -118,41 +116,31 @@ class AgendorClient:
             log.error(f"[Agendor] Erro ao criar negócio: {e}")
             return None
 
-    async def move_deal_stage(self, deal_id: int, stage_id: int) -> bool:
-        """Move o negócio para outra etapa do funil."""
+    async def move_deal_stage(self, deal_id: int, stage_id: int, funnel_id: Optional[int] = None) -> bool:
+        """
+        Move negócio para outra etapa.
+        Endpoint CORRETO: PUT /deals/{id}/stage  (não PUT /deals/{id})
+        """
         try:
-            await self._put(f"/deals/{deal_id}", {"dealStage": stage_id})
+            body: Dict[str, Any] = {"dealStage": stage_id}
+            if funnel_id:
+                body["funnel"] = funnel_id
+            await self._put(f"/deals/{deal_id}/stage", body)
             log.info(f"[Agendor] Negócio {deal_id} movido para etapa {stage_id}")
             return True
         except Exception as e:
             log.error(f"[Agendor] Erro ao mover etapa: {e}")
             return False
 
-    async def assign_deal_owner(self, deal_id: int, owner_id: int) -> bool:
-        """Atribui responsável ao negócio."""
-        try:
-            await self._put(f"/deals/{deal_id}", {"allowedUsers": [owner_id]})
-            log.info(f"[Agendor] Negócio {deal_id} atribuído ao vendedor {owner_id}")
-            return True
-        except Exception as e:
-            log.error(f"[Agendor] Erro ao atribuir vendedor: {e}")
-            return False
-
     async def add_note(self, deal_id: int, text: str) -> bool:
         """
-        Adiciona uma nota/anotação ao negócio via tarefa do tipo NOTA.
-        Endpoint: POST /deals/{deal_id}/tasks
-        O endpoint /deals/{id}/annotations não existe na API v3.
+        Adiciona nota ao histórico do negócio.
+        Endpoint: POST /deals/{id}/tasks
+        Body: apenas {"text": "..."} – sem type nem due_date.
         """
         try:
             note_text = text[:2000] if len(text) > 2000 else text
-            due_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            body = {
-                "text": note_text,
-                "type": "NOTA",
-                "due_date": due_date,
-            }
-            await self._post(f"/deals/{deal_id}/tasks", body)
+            await self._post(f"/deals/{deal_id}/tasks", {"text": note_text})
             log.info(f"[Agendor] Nota adicionada ao negócio {deal_id}")
             return True
         except Exception as e:
@@ -169,7 +157,7 @@ class AgendorClient:
             return []
 
     async def list_stages(self, funnel_id: int) -> List[Dict]:
-        """Extrai etapas do retorno de /funnels (etapas vêm em 'dealStages')."""
+        """Etapas vêm dentro do funil, chave 'dealStages'."""
         try:
             data = await self._get("/funnels")
             funnels = data.get("data", [])
