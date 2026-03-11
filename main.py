@@ -220,10 +220,8 @@ async def _sync_to_agendor(conv_id: int, db_session: AsyncSession):
         crm = AgendorClient(agendor_token)
         name = conv.name or conv.phone
 
-        # 1. Criar pessoa
-        person_id = await crm.find_person_by_phone(conv.phone)
-        if not person_id:
-            person_id = await crm.create_person(name, conv.phone)
+        # 1. Criar ou atualizar pessoa (upsert – sem duplicatas)
+        person_id = await crm.upsert_person(name, conv.phone)
         if not person_id:
             return
 

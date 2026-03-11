@@ -1,9 +1,20 @@
 """
 Agendor CRM – cliente assíncrono
 Docs: https://api.agendor.com.br/docs/
+Wiki: https://github.com/agendor/agendor-api-docs/wiki/Exemplos
+
+Endpoints confirmados (v3):
+  POST /people/upsert                → cria ou atualiza pessoa (sem duplicar)
+  GET  /people?q=<phone>             → busca pessoa por telefone
+  POST /people/{person_id}/deals     → cria negócio vinculado à pessoa
+  PUT  /deals/{deal_id}              → atualiza negócio (etapa, responsável)
+  POST /deals/{deal_id}/tasks        → cria tarefa/nota no negócio
+  GET  /funnels                      → lista funis (etapas vêm em 'dealStages')
+  GET  /users                        → lista usuários/vendedores
 """
 import httpx
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 log = logging.getLogger("agendor")
@@ -38,21 +49,26 @@ class AgendorClient:
             return r.json()
 
     # ─── People ─────────────────────────────────────────────────────────────
-    async def create_person(self, name: str, phone: str) -> Optional[int]:
-        """Cria uma pessoa no Agendor e retorna o ID."""
+    async def upsert_person(self, name: str, phone: str) -> Optional[int]:
+        """
+        Cria ou atualiza uma pessoa no Agendor (sem duplicar).
+        Endpoint: POST /people/upsert
+        Telefone deve vir dentro de 'contact.mobilePhone'.
+        """
         try:
-            # Formata telefone (remove não-dígitos)
             phone_clean = "".join(c for c in phone if c.isdigit())
             body = {
                 "name": name,
-                "mobilePhone": phone_clean,
+                "contact": {
+                    "mobilePhone": phone_clean,
+                },
             }
-            data = await self._post("/people", body)
+            data = await self._post("/people/upsert", body)
             person_id = data.get("data", {}).get("id")
-            log.info(f"[Agendor] Pessoa criada: {name} → ID {person_id}")
+            log.info(f"[Agendor] Pessoa upsert: {name} → ID {person_id}")
             return person_id
         except Exception as e:
-            log.error(f"[Agendor] Erro ao criar pessoa: {e}")
+            log.error(f"[Agendor] Erro ao criar/atualizar pessoa: {e}")
             return None
 
     async def find_person_by_phone(self, phone: str) -> Optional[int]:
@@ -77,20 +93,23 @@ class AgendorClient:
         owner_id: Optional[int] = None,
         value_tier: Optional[str] = None,
     ) -> Optional[int]:
-        """Cria um negócio no Agendor vinculado à pessoa.
-        Endpoint correto: POST /people/{person_id}/deals
+        """
+        Cria um negócio no Agendor vinculado à pessoa.
+        Endpoint: POST /people/{person_id}/deals
+        Campo da etapa: 'dealStage' (não 'stageId').
+        Campo do funil: 'funnel' (não 'funnelId').
         """
         try:
             body: Dict[str, Any] = {
                 "title": title,
-                "dealStage": stage_id,   # campo correto conforme docs Agendor
+                "dealStage": stage_id,
+                "funnel": funnel_id,
             }
             if owner_id:
                 body["allowedUsers"] = [owner_id]
             if value_tier:
                 body["description"] = f"Faixa de investimento: {value_tier}"
 
-            # Endpoint correto: negócio deve ser criado sob a pessoa
             data = await self._post(f"/people/{person_id}/deals", body)
             deal_id = data.get("data", {}).get("id")
             log.info(f"[Agendor] Negócio criado: {title} → ID {deal_id}")
@@ -102,7 +121,7 @@ class AgendorClient:
     async def move_deal_stage(self, deal_id: int, stage_id: int) -> bool:
         """Move o negócio para outra etapa do funil."""
         try:
-            await self._put(f"/deals/{deal_id}", {"stageId": stage_id})
+            await self._put(f"/deals/{deal_id}", {"dealStage": stage_id})
             log.info(f"[Agendor] Negócio {deal_id} movido para etapa {stage_id}")
             return True
         except Exception as e:
@@ -112,7 +131,7 @@ class AgendorClient:
     async def assign_deal_owner(self, deal_id: int, owner_id: int) -> bool:
         """Atribui responsável ao negócio."""
         try:
-            await self._put(f"/deals/{deal_id}", {"ownerId": owner_id})
+            await self._put(f"/deals/{deal_id}", {"allowedUsers": [owner_id]})
             log.info(f"[Agendor] Negócio {deal_id} atribuído ao vendedor {owner_id}")
             return True
         except Exception as e:
@@ -120,9 +139,20 @@ class AgendorClient:
             return False
 
     async def add_note(self, deal_id: int, text: str) -> bool:
-        """Adiciona uma anotação ao negócio."""
+        """
+        Adiciona uma nota/anotação ao negócio via tarefa do tipo NOTA.
+        Endpoint: POST /deals/{deal_id}/tasks
+        O endpoint /deals/{id}/annotations não existe na API v3.
+        """
         try:
-            await self._post(f"/deals/{deal_id}/annotations", {"text": text})
+            note_text = text[:2000] if len(text) > 2000 else text
+            due_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            body = {
+                "text": note_text,
+                "type": "NOTA",
+                "due_date": due_date,
+            }
+            await self._post(f"/deals/{deal_id}/tasks", body)
             log.info(f"[Agendor] Nota adicionada ao negócio {deal_id}")
             return True
         except Exception as e:
@@ -139,15 +169,14 @@ class AgendorClient:
             return []
 
     async def list_stages(self, funnel_id: int) -> List[Dict]:
-        """Extrai etapas do retorno de /funnels (as etapas vêm embutidas no funil)."""
+        """Extrai etapas do retorno de /funnels (etapas vêm em 'dealStages')."""
         try:
             data = await self._get("/funnels")
             funnels = data.get("data", [])
             for funnel in funnels:
                 fid = funnel.get("id") or funnel.get("_id")
                 if str(fid) == str(funnel_id):
-                    # Tenta as chaves possíveis onde as etapas podem estar
-                    for key in ("stages", "dealStages", "steps", "funnelSteps"):
+                    for key in ("dealStages", "stages", "steps", "funnelSteps"):
                         stages = funnel.get(key, [])
                         if stages:
                             log.info(f"[Agendor] {len(stages)} etapas encontradas (chave: {key})")
