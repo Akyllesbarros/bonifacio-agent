@@ -166,6 +166,8 @@ async def wa_receive(request: Request, db: AsyncSession = Depends(get_db)):
         user_message=text,
     )
 
+    log.info(f"[STAGE] phone={phone} | stage {conv.stage} → {new_stage} | name={new_name!r} | tier={new_tier!r} | msg={text!r}")
+
     # ── Update conversation ────────────────────────────────────────────────
     if new_name:
         conv.name = new_name
@@ -194,73 +196,101 @@ async def wa_receive(request: Request, db: AsyncSession = Depends(get_db)):
 
     # ── CRM sync when qualification completes ──────────────────────────────
     if new_stage == 4 and conv.agendor_deal_id is None:
-        asyncio.create_task(_sync_to_agendor(conv.id, db))
+        log.info(f"[CRM] 🚀 Disparando sync para conv_id={conv.id} phone={phone} tier={conv.value_tier!r}")
+        task = asyncio.create_task(_sync_to_agendor(conv.id))
+        task.add_done_callback(lambda t: log.error(f"[CRM] Task falhou: {t.exception()}") if not t.cancelled() and t.exception() else None)
+    else:
+        log.info(f"[CRM] Sync NÃO disparado — new_stage={new_stage}, deal_id={conv.agendor_deal_id}")
 
     return JSONResponse({"status": "ok"})
 
 
-async def _sync_to_agendor(conv_id: int, db_session: AsyncSession):
+async def _sync_to_agendor(conv_id: int):
     """Background task: cria pessoa + negócio no Agendor, move etapa, adiciona nota."""
     from database import AsyncSessionLocal
-    async with AsyncSessionLocal() as db:
-        r = await db.execute(select(Conversation).where(Conversation.id == conv_id))
-        conv = r.scalar_one_or_none()
-        if not conv:
-            return
+    log.info(f"[CRM] ── Iniciando sync para conv_id={conv_id}")
+    try:
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(select(Conversation).where(Conversation.id == conv_id))
+            conv = r.scalar_one_or_none()
+            if not conv:
+                log.error(f"[CRM] conv_id={conv_id} não encontrado no banco")
+                return
 
-        agendor_token = await get_setting("agendor_api_token", db)
-        funnel_id = int(await get_setting("agendor_funnel_id", db) or 0)
-        stage_initial = int(await get_setting("agendor_stage_initial", db) or 0)
-        stage_qualified = int(await get_setting("agendor_stage_qualified", db) or 0)
+            agendor_token = await get_setting("agendor_api_token", db)
+            funnel_id_str = await get_setting("agendor_funnel_id", db)
+            stage_initial_str = await get_setting("agendor_stage_initial", db)
+            stage_qualified_str = await get_setting("agendor_stage_qualified", db)
 
-        if not agendor_token or not funnel_id:
-            log.warning("[CRM] Configurações do Agendor incompletas, pulando sync")
-            return
+            log.info(f"[CRM] Config → token={'✅' if agendor_token else '❌ VAZIO'} | funnel={funnel_id_str!r} | stage_initial={stage_initial_str!r} | stage_qualified={stage_qualified_str!r}")
 
-        crm = AgendorClient(agendor_token)
-        name = conv.name or conv.phone
+            funnel_id = int(funnel_id_str) if funnel_id_str else 0
+            stage_initial = int(stage_initial_str) if stage_initial_str else 0
+            stage_qualified = int(stage_qualified_str) if stage_qualified_str else 0
 
-        # 1. Buscar pessoa pelo telefone; se não existir, criar
-        person_id = await crm.get_or_create_person(name, conv.phone)
-        if not person_id:
-            log.error("[CRM] Falha ao obter/criar pessoa no Agendor")
-            return
+            if not agendor_token:
+                log.warning("[CRM] ❌ Token do Agendor não configurado — abortando sync")
+                return
+            if not funnel_id:
+                log.warning("[CRM] ❌ Funil do Agendor não configurado — abortando sync")
+                return
 
-        # 2. Atribuir vendedor
-        salesperson_id = await get_next_salesperson(conv.value_tier, db)
+            crm = AgendorClient(agendor_token)
+            name = conv.name or conv.phone
+            log.info(f"[CRM] Lead: {name} | phone: {conv.phone} | tier: {conv.value_tier}")
 
-        # 3. Criar negócio
-        deal_title = f"Lead WhatsApp – {name}"
-        deal_id = await crm.create_deal(
-            title=deal_title,
-            person_id=person_id,
-            funnel_id=funnel_id,
-            stage_id=stage_initial,
-            owner_id=salesperson_id,
-            value_tier=conv.value_tier,
-        )
-        if not deal_id:
-            return
+            # 1. Buscar ou criar pessoa
+            log.info("[CRM] Passo 1 → get_or_create_person")
+            person_id = await crm.get_or_create_person(name, conv.phone)
+            if not person_id:
+                log.error("[CRM] ❌ Falha ao obter/criar pessoa no Agendor")
+                return
+            log.info(f"[CRM] ✅ Pessoa: ID {person_id}")
 
-        # 4. Mover para etapa "Qualificado"
-        if stage_qualified:
-            await crm.move_deal_stage(deal_id, stage_qualified, funnel_id=funnel_id)
+            # 2. Atribuir vendedor
+            salesperson_id = await get_next_salesperson(conv.value_tier, db)
+            log.info(f"[CRM] Vendedor atribuído: {salesperson_id}")
 
-        # 5. Adicionar nota com histórico
-        r2 = await db.execute(
-            select(Message).where(Message.conversation_id == conv_id).order_by(Message.created_at)
-        )
-        messages = [{"direction": m.direction, "content": m.content} for m in r2.scalars().all()]
-        agent = JuliaAgent("")
-        note = agent.build_crm_note(name, conv.investment_answer, conv.value_tier, messages)
-        await crm.add_note(deal_id, note)
+            # 3. Criar negócio
+            deal_title = f"Lead WhatsApp – {name}"
+            log.info(f"[CRM] Passo 3 → create_deal: {deal_title!r} | funnel={funnel_id} | stage={stage_initial}")
+            deal_id = await crm.create_deal(
+                title=deal_title,
+                person_id=person_id,
+                funnel_id=funnel_id,
+                stage_id=stage_initial,
+                owner_id=salesperson_id,
+                value_tier=conv.value_tier,
+            )
+            if not deal_id:
+                log.error("[CRM] ❌ Falha ao criar negócio")
+                return
+            log.info(f"[CRM] ✅ Negócio criado: ID {deal_id}")
 
-        # 6. Salvar IDs no banco
-        conv.agendor_person_id = person_id
-        conv.agendor_deal_id = deal_id
-        conv.agendor_salesperson_id = salesperson_id
-        await db.commit()
-        log.info(f"[CRM] Sync concluído: deal_id={deal_id}, salesperson={salesperson_id}")
+            # 4. Mover para etapa qualificado
+            if stage_qualified:
+                log.info(f"[CRM] Passo 4 → move_deal_stage: deal={deal_id} stage={stage_qualified}")
+                await crm.move_deal_stage(deal_id, stage_qualified, funnel_id=funnel_id)
+
+            # 5. Adicionar nota com histórico
+            r2 = await db.execute(
+                select(Message).where(Message.conversation_id == conv_id).order_by(Message.created_at)
+            )
+            messages = [{"direction": m.direction, "content": m.content} for m in r2.scalars().all()]
+            agent = JuliaAgent("")
+            note = agent.build_crm_note(name, conv.investment_answer, conv.value_tier, messages)
+            log.info(f"[CRM] Passo 5 → add_note ({len(note)} chars)")
+            await crm.add_note(deal_id, note)
+
+            # 6. Salvar IDs no banco
+            conv.agendor_person_id = person_id
+            conv.agendor_deal_id = deal_id
+            conv.agendor_salesperson_id = salesperson_id
+            await db.commit()
+            log.info(f"[CRM] ✅ SYNC COMPLETO — person={person_id} deal={deal_id} seller={salesperson_id}")
+
+    except Exception as e:
+        log.exception(f"[CRM] ❌ Exceção inesperada no sync: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
