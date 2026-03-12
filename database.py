@@ -3,7 +3,7 @@ Database – SQLite via SQLAlchemy async
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Text, DateTime, Boolean, ForeignKey, func
+from sqlalchemy import String, Integer, Text, DateTime, Boolean, ForeignKey, func, text
 from datetime import datetime
 from typing import Optional, List
 
@@ -39,18 +39,27 @@ class Conversation(Base):
     agendor_deal_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     agendor_salesperson_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # Contact management (for test + audit)
+    contact_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reset_count: Mapped[int] = mapped_column(Integer, default=0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
-    messages: Mapped[List["Message"]] = relationship("Message", back_populates="conversation",
-                                                       order_by="Message.created_at")
+    messages: Mapped[List["Message"]] = relationship(
+        "Message", back_populates="conversation",
+        order_by="Message.created_at",
+        cascade="all, delete-orphan",   # cascade deletes messages when contact is deleted
+    )
 
 
 class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    conversation_id: Mapped[int] = mapped_column(Integer, ForeignKey("conversations.id"), index=True)
+    conversation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
     direction: Mapped[str] = mapped_column(String(3))   # "in" | "out"
     content: Mapped[str] = mapped_column(Text)
     wa_message_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -79,6 +88,15 @@ class SalespersonRotation(Base):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Migration-safe: add new columns if they don't exist (SQLite doesn't support IF NOT EXISTS for columns)
+        for col_sql in [
+            "ALTER TABLE conversations ADD COLUMN contact_notes TEXT",
+            "ALTER TABLE conversations ADD COLUMN reset_count INTEGER DEFAULT 0",
+        ]:
+            try:
+                await conn.execute(text(col_sql))
+            except Exception:
+                pass  # column already exists – that's fine
 
 
 async def get_db():

@@ -423,6 +423,117 @@ async def agendor_users(db: AsyncSession = Depends(get_db)):
     return await crm.list_users()
 
 
+# ─── Contact Management (reset / delete / notes) ───────────────────────────
+
+@app.get("/api/contacts")
+async def list_contacts(db: AsyncSession = Depends(get_db)):
+    """Lists all contacts with message count. Used by the Contacts panel."""
+    from sqlalchemy import func as sqlfunc
+    r = await db.execute(
+        select(Conversation).order_by(desc(Conversation.updated_at))
+    )
+    convs = r.scalars().all()
+    result = []
+    for c in convs:
+        count_r = await db.execute(
+            select(sqlfunc.count(Message.id)).where(Message.conversation_id == c.id)
+        )
+        msg_count = count_r.scalar() or 0
+        result.append({
+            "id": c.id,
+            "phone": c.phone,
+            "name": c.name or c.phone,
+            "stage": c.stage,
+            "ai_active": c.ai_active,
+            "value_tier": c.value_tier,
+            "agendor_person_id": c.agendor_person_id,
+            "agendor_deal_id": c.agendor_deal_id,
+            "agendor_salesperson_id": c.agendor_salesperson_id,
+            "contact_notes": c.contact_notes or "",
+            "reset_count": c.reset_count or 0,
+            "message_count": msg_count,
+            "created_at": c.created_at.isoformat(),
+            "updated_at": c.updated_at.isoformat() if c.updated_at else c.created_at.isoformat(),
+        })
+    return result
+
+
+@app.post("/api/conversations/{conv_id}/reset")
+async def reset_conversation(conv_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Resets the conversation state for testing:
+    - Deletes all messages
+    - Resets: stage, investment_answer, value_tier, agendor_deal_id, agendor_salesperson_id
+    - Keeps: phone, name, agendor_person_id (person already exists in Agendor – avoid duplicate)
+    - Increments: reset_count (audit trail)
+    """
+    r = await db.execute(select(Conversation).where(Conversation.id == conv_id))
+    conv = r.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(404, "Conversa não encontrada")
+
+    # Count messages before deletion
+    from sqlalchemy import func as sqlfunc, delete as sqla_delete
+    count_r = await db.execute(
+        select(sqlfunc.count(Message.id)).where(Message.conversation_id == conv_id)
+    )
+    msg_count = count_r.scalar() or 0
+
+    # Delete all messages
+    await db.execute(sqla_delete(Message).where(Message.conversation_id == conv_id))
+
+    # Reset session state, keep contact identity
+    conv.stage = 0
+    conv.ai_active = True
+    conv.investment_answer = None
+    conv.value_tier = None
+    conv.agendor_deal_id = None
+    conv.agendor_salesperson_id = None
+    conv.reset_count = (conv.reset_count or 0) + 1
+    conv.updated_at = datetime.utcnow()
+
+    await db.commit()
+    log.info(f"[Contact] Conversa {conv_id} ({conv.phone}) resetada. {msg_count} msgs apagadas. Reset #{conv.reset_count}")
+    return {"status": "reset", "messages_deleted": msg_count, "reset_count": conv.reset_count}
+
+
+@app.delete("/api/contacts/{conv_id}")
+async def delete_contact(conv_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Permanently deletes a contact and ALL associated data (messages cascade).
+    The Agendor record is NOT affected.
+    """
+    r = await db.execute(select(Conversation).where(Conversation.id == conv_id))
+    conv = r.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(404, "Contato não encontrado")
+
+    phone = conv.phone
+    name = conv.name or conv.phone
+
+    # cascade="all, delete-orphan" on the relationship handles messages automatically
+    await db.delete(conv)
+    await db.commit()
+    log.info(f"[Contact] Contato apagado: {name} ({phone})")
+    return {"status": "deleted", "phone": phone, "name": name}
+
+
+@app.patch("/api/contacts/{conv_id}/notes")
+async def update_contact_notes(conv_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Save operator notes for a contact."""
+    body = await request.json()
+    notes = body.get("notes", "").strip()
+
+    r = await db.execute(select(Conversation).where(Conversation.id == conv_id))
+    conv = r.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(404)
+
+    conv.contact_notes = notes
+    await db.commit()
+    return {"status": "saved"}
+
+
 # ─── Stats ─────────────────────────────────────────────────────────────────
 @app.get("/api/stats")
 async def get_stats(db: AsyncSession = Depends(get_db)):

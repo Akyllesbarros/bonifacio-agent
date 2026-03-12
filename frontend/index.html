@@ -289,6 +289,121 @@ header::after{
 .progress-step.done .progress-dot{background:var(--green)}
 .progress-step.current .progress-dot{background:var(--gold);box-shadow:0 0 6px var(--gold)}
 
+/* ── CONTACTS PANEL ──────────────────────────────── */
+#panel-contacts{flex-direction:column;overflow:hidden}
+.contacts-header{
+  padding:20px 24px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.contacts-header h2{font-family:var(--font-display);font-size:20px;font-weight:600;color:var(--text)}
+.contacts-search{
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:8px 14px;border-radius:8px;
+  font-family:var(--font);font-size:13px;outline:none;transition:.2s;width:220px;
+}
+.contacts-search:focus{border-color:var(--gold)}
+.contacts-search::placeholder{color:var(--text3)}
+.contacts-count{font-size:12px;color:var(--text3);margin-left:8px}
+.contacts-grid{
+  flex:1;overflow-y:auto;padding:20px 24px;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
+  gap:16px;align-content:start;
+}
+.contact-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:18px;display:flex;flex-direction:column;gap:14px;
+  transition:.2s;position:relative;overflow:hidden;
+}
+.contact-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:0;transition:.2s;
+}
+.contact-card:hover{border-color:var(--surface3);background:var(--surface2)}
+.contact-card:hover::before{opacity:.5}
+.contact-card-top{display:flex;align-items:flex-start;gap:14px}
+.contact-card-avatar{
+  width:46px;height:46px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,#1e2a40,var(--surface3));
+  border:2px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:16px;color:var(--gold);
+}
+.contact-card-identity{flex:1;min-width:0}
+.contact-card-name{font-weight:600;font-size:14px;color:var(--text);margin-bottom:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.contact-card-phone{font-size:12px;color:var(--text2)}
+.contact-card-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.contact-card-meta{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+  padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);
+}
+.meta-item{display:flex;flex-direction:column;gap:2px}
+.meta-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.meta-value{font-size:12px;color:var(--text);font-weight:500}
+.meta-value.green{color:var(--green)}
+.meta-value.gold{color:var(--gold)}
+.meta-value.muted{color:var(--text3)}
+.contact-card-notes{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:8px 12px;
+  font-size:12px;color:var(--text2);cursor:pointer;transition:.2s;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.contact-card-notes:hover{border-color:var(--gold);color:var(--text)}
+.contact-card-notes.empty{color:var(--text3);font-style:italic}
+.contact-card-actions{display:flex;gap:8px}
+.contact-card-actions .btn{flex:1;justify-content:center;font-size:12px}
+.reset-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  background:rgba(232,160,32,.12);border:1px solid rgba(232,160,32,.25);
+  color:#e8a020;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;
+}
+.contacts-empty{
+  grid-column:1/-1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:60px;gap:14px;color:var(--text3);
+}
+.contacts-empty .empty-icon{font-size:52px;opacity:.2}
+
+/* ── CONFIRMATION MODAL ──────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;z-index:1000;
+  opacity:0;pointer-events:none;transition:.2s;
+}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal-box{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:32px;width:420px;max-width:90vw;
+  display:flex;flex-direction:column;gap:16px;
+  box-shadow:0 24px 64px rgba(0,0,0,.6);
+  transform:scale(.95) translateY(8px);transition:.2s;
+}
+.modal-overlay.open .modal-box{transform:scale(1) translateY(0)}
+.modal-icon-wrap{text-align:center;font-size:40px;line-height:1}
+.modal-title{font-family:var(--font-display);font-size:20px;font-weight:600;color:var(--text);text-align:center}
+.modal-desc{font-size:13px;color:var(--text2);line-height:1.65;text-align:center}
+.modal-detail-box{
+  background:var(--surface2);border-radius:8px;padding:12px 16px;
+  font-size:12.5px;color:var(--text2);line-height:1.6;
+  border-left:3px solid var(--border);
+}
+.modal-detail-box.warn{border-left-color:#e8a020}
+.modal-detail-box.danger{border-left-color:var(--red)}
+.modal-actions{display:flex;gap:10px;padding-top:4px}
+.modal-actions .btn{flex:1;justify-content:center;padding:10px}
+.btn.amber{background:rgba(232,160,32,.12);border-color:rgba(232,160,32,.35);color:#e8a020;font-weight:600}
+.btn.amber:hover{background:rgba(232,160,32,.22);border-color:#e8a020}
+.btn.red-solid{background:rgba(224,92,92,.12);border-color:rgba(224,92,92,.35);color:var(--red);font-weight:600}
+.btn.red-solid:hover{background:rgba(224,92,92,.22);border-color:var(--red)}
+.notes-textarea{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  padding:12px;border-radius:8px;font-family:var(--font);font-size:13px;
+  resize:vertical;min-height:100px;outline:none;transition:.2s;width:100%;
+}
+.notes-textarea:focus{border-color:var(--gold)}
+.btn.chat-reset:hover{border-color:#e8a020;color:#e8a020}
+.btn.chat-delete:hover{border-color:var(--red);color:var(--red)}
+
 /* ── BLAST PANEL ─────────────────────────────────── */
 #panel-blast{flex-direction:column;padding:32px;gap:24px;overflow-y:auto}
 .panel-title{font-family:var(--font-display);font-size:26px;font-weight:600;color:var(--gold2)}
@@ -403,6 +518,9 @@ header::after{
     <button class="nav-btn active" id="nav-chats" onclick="setPanel('chats')">
       💬<span class="tooltip">Conversas</span>
     </button>
+    <button class="nav-btn" id="nav-contacts" onclick="setPanel('contacts')">
+      👥<span class="tooltip">Contatos</span>
+    </button>
     <button class="nav-btn" id="nav-blast" onclick="setPanel('blast')">
       📢<span class="tooltip">Disparo em Massa</span>
     </button>
@@ -460,6 +578,54 @@ header::after{
         <div class="detail-title">CRM Agendor</div>
         <div class="detail-row"><div class="detail-label">Deal ID</div><div class="detail-value" id="d-deal">—</div></div>
         <div class="detail-row"><div class="detail-label">Vendedor</div><div class="detail-value" id="d-seller">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTACTS PANEL -->
+  <div class="panel" id="panel-contacts">
+    <div class="contacts-header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <h2>👥 Contatos</h2>
+        <span class="contacts-count" id="contacts-count"></span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input class="contacts-search" type="text" id="contacts-search"
+               placeholder="🔍  Buscar por nome ou telefone…"
+               oninput="filterContacts(this.value)">
+        <button class="btn" onclick="loadContacts()" title="Recarregar">🔄</button>
+      </div>
+    </div>
+    <div class="contacts-grid" id="contacts-grid">
+      <div class="contacts-empty">
+        <div class="loading" style="margin:0 auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIRMATION MODAL -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-box">
+      <div class="modal-icon-wrap" id="modal-icon">⚠️</div>
+      <h3 class="modal-title" id="modal-title">Confirmar</h3>
+      <p class="modal-desc" id="modal-desc"></p>
+      <div class="modal-detail-box" id="modal-detail"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Cancelar</button>
+        <button class="btn" id="modal-confirm-btn" onclick="executeConfirm()">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTES EDIT MODAL -->
+  <div class="modal-overlay" id="notes-modal">
+    <div class="modal-box">
+      <h3 class="modal-title">📝 Notas do contato</h3>
+      <p class="modal-desc" style="font-size:12px">Anotações internas sobre este contato. Visível apenas no painel.</p>
+      <textarea class="notes-textarea" id="notes-textarea" placeholder="Ex: Lead de teste – número pessoal do Akylles…"></textarea>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeNotesModal()">Cancelar</button>
+        <button class="btn primary" onclick="saveNotes()">💾 Salvar</button>
       </div>
     </div>
   </div>
@@ -597,15 +763,6 @@ let selectedConvId = null;
 let msgPollInterval = null;
 let convPollInterval = null;
 
-// ─── Navigation ──────────────────────────────────────────────────────────
-function setPanel(name){
-  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('panel-'+name).classList.add('active');
-  document.getElementById('nav-'+name).classList.add('active');
-  if(name==='settings') loadSettingsUI();
-}
-
 // ─── Toast ────────────────────────────────────────────────────────────────
 function toast(msg, type=''){
   const el=document.getElementById('toast');
@@ -732,6 +889,8 @@ function renderMessages(msgs, conv){
         <button class="btn ${conv.ai_active?'danger':''}" onclick="toggleAI(${conv.id})">
           ${conv.ai_active?'🛑 Parar IA':'🤖 Retomar IA'}
         </button>
+        <button class="btn chat-reset" onclick="confirmReset(${conv.id},'${esc(conv.name)}',${conv.agendor_deal_id||0})" title="Resetar conversa para teste">🔄 Resetar</button>
+        <button class="btn chat-delete" onclick="confirmDelete(${conv.id},'${esc(conv.name)}')" title="Apagar contato permanentemente">🗑️</button>
       </div>
     </div>
     <div class="messages-container" id="msg-container">
@@ -921,6 +1080,255 @@ function copyWebhook(){
   toast('URL copiada ✓','success');
 }
 
+// ─── Contacts Panel ──────────────────────────────────────────────────────
+let allContacts = [];
+
+async function loadContacts(){
+  try{
+    allContacts = await fetch('/api/contacts').then(r=>r.json());
+    renderContacts(allContacts);
+  }catch(e){ renderContacts([]); }
+}
+
+function filterContacts(q){
+  q = q.toLowerCase();
+  renderContacts(allContacts.filter(c=>
+    (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q)
+  ));
+}
+
+const TIER_SHORT = {
+  'Abaixo de R$35.000':'< 35k',
+  'Acima de R$35.000':'35k+',
+  'Acima de R$100.000':'100k+',
+  'Acima de R$250.000':'250k+',
+};
+
+function agendorStatus(c){
+  if(c.agendor_deal_id)  return `<span class="meta-value green">✅ Deal #${c.agendor_deal_id}</span>`;
+  if(c.agendor_person_id) return `<span class="meta-value gold">⏳ Pessoa #${c.agendor_person_id}</span>`;
+  return `<span class="meta-value muted">Não sincronizado</span>`;
+}
+
+function renderContacts(list){
+  const el = document.getElementById('contacts-grid');
+  const countEl = document.getElementById('contacts-count');
+  countEl.textContent = list.length ? `${list.length} contato${list.length>1?'s':''}` : '';
+
+  if(!list.length){
+    el.innerHTML=`<div class="contacts-empty">
+      <div class="empty-icon">👥</div>
+      <p>Nenhum contato encontrado</p>
+      <small>Os contatos aparecem assim que a primeira mensagem chega pelo WhatsApp.</small>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = list.map(c => {
+    const tier = TIER_SHORT[c.value_tier] || c.value_tier || '—';
+    const resetBadge = c.reset_count > 0
+      ? `<span class="reset-badge">🔄 Resetado ${c.reset_count}×</span>` : '';
+    const hasNotes = c.contact_notes && c.contact_notes.trim();
+    const notesText = hasNotes ? esc(c.contact_notes) : '+ Adicionar anotação…';
+
+    return `
+    <div class="contact-card" id="card-${c.id}">
+      <div class="contact-card-top">
+        <div class="contact-card-avatar">${avatarLetter(c.name)}</div>
+        <div class="contact-card-identity">
+          <div class="contact-card-name">${esc(c.name)}</div>
+          <div class="contact-card-phone">📱 ${c.phone}</div>
+          <div class="contact-card-badges">
+            <span class="stage-badge stage-${c.stage}">${stageLabel(c.stage)}</span>
+            ${c.value_tier?`<span class="stage-badge stage-4">${tier}</span>`:''}
+            ${resetBadge}
+          </div>
+        </div>
+      </div>
+
+      <div class="contact-card-meta">
+        <div class="meta-item">
+          <span class="meta-label">Agendor</span>
+          ${agendorStatus(c)}
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Mensagens</span>
+          <span class="meta-value">${c.message_count} msg${c.message_count!==1?'s':''}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Criado em</span>
+          <span class="meta-value muted">${new Date(c.created_at).toLocaleDateString('pt-BR')}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Última atividade</span>
+          <span class="meta-value muted">${formatTime(c.updated_at)}</span>
+        </div>
+      </div>
+
+      <div class="contact-card-notes ${hasNotes?'':'empty'}"
+           onclick="openNotesModal(${c.id},'${esc(c.contact_notes||'')}')"
+           title="Clique para editar anotações">
+        📝 ${notesText}
+      </div>
+
+      <div class="contact-card-actions">
+        <button class="btn" onclick="goToChat(${c.id})" title="Abrir conversa no painel de chats">💬 Ver conversa</button>
+        <button class="btn reset-btn" onclick="confirmReset(${c.id},'${esc(c.name)}',${c.agendor_deal_id||0})" title="Apagar mensagens e reiniciar IA do zero">🔄 Resetar</button>
+        <button class="btn delete-btn" onclick="confirmDelete(${c.id},'${esc(c.name)}')" title="Apagar contato permanentemente">🗑️ Apagar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function goToChat(convId){
+  setPanel('chats');
+  selectConv(convId);
+}
+
+// ─── Confirmation Modal ───────────────────────────────────────────────────
+let pendingAction = null;
+
+function openModal({ icon, title, desc, detailHtml, detailClass, btnLabel, btnClass, onConfirm }){
+  document.getElementById('modal-icon').textContent = icon;
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-desc').textContent = desc;
+  const det = document.getElementById('modal-detail');
+  det.innerHTML = detailHtml;
+  det.className = `modal-detail-box ${detailClass||''}`;
+  const btn = document.getElementById('modal-confirm-btn');
+  btn.textContent = btnLabel;
+  btn.className = `btn ${btnClass}`;
+  pendingAction = onConfirm;
+  document.getElementById('confirm-modal').classList.add('open');
+}
+
+function closeModal(){
+  document.getElementById('confirm-modal').classList.remove('open');
+  pendingAction = null;
+}
+
+async function executeConfirm(){
+  if(pendingAction){ await pendingAction(); }
+  closeModal();
+}
+
+// close on overlay click
+document.getElementById('confirm-modal').addEventListener('click', function(e){
+  if(e.target === this) closeModal();
+});
+
+async function confirmReset(convId, name, dealId){
+  // Get message count first for the modal detail
+  let msgCount = '—';
+  try{
+    const msgs = await fetch(`/api/conversations/${convId}/messages`).then(r=>r.json());
+    msgCount = msgs.length;
+  }catch(e){}
+
+  openModal({
+    icon: '🔄',
+    title: 'Resetar conversa?',
+    desc: `A conversa de "${name}" será reiniciada do zero. A IA responderá como se fosse o primeiro contato.`,
+    detailHtml: `
+      <b>O que será apagado:</b><br>
+      • ${msgCount} mensagem(ns) do histórico<br>
+      • Estágio, faixa de valor e dados da sessão<br>
+      <br><b>O que será mantido:</b><br>
+      • Nome e telefone do contato<br>
+      ${dealId ? `• Deal Agendor #${dealId} (não afetado)<br>` : ''}
+      • Pessoa no Agendor (evita duplicata)
+    `,
+    detailClass: 'warn',
+    btnLabel: '🔄 Sim, resetar',
+    btnClass: 'amber',
+    onConfirm: async () => {
+      try{
+        const r = await fetch(`/api/conversations/${convId}/reset`, {method:'POST'});
+        const d = await r.json();
+        toast(`Conversa resetada — ${d.messages_deleted} msg(s) apagadas ✓`, 'success');
+        await loadConversations();
+        await loadContacts();
+        // if this was the selected conv, close the chat view
+        if(selectedConvId === convId){
+          selectedConvId = null;
+          document.getElementById('chat-view').innerHTML=`<div class="chat-empty"><div class="icon">🔄</div><p>Conversa resetada. Aguardando nova mensagem.</p></div>`;
+          document.getElementById('lead-detail').style.display='none';
+        }
+      }catch(e){ toast('Erro ao resetar','error'); }
+    }
+  });
+}
+
+async function confirmDelete(convId, name){
+  let msgCount = '—';
+  try{
+    const msgs = await fetch(`/api/conversations/${convId}/messages`).then(r=>r.json());
+    msgCount = msgs.length;
+  }catch(e){}
+
+  openModal({
+    icon: '🗑️',
+    title: 'Apagar contato permanentemente?',
+    desc: `Esta ação é irreversível. "${name}" será removido do sistema por completo.`,
+    detailHtml: `
+      <b>Será apagado para sempre:</b><br>
+      • O contato e todos os dados locais<br>
+      • ${msgCount} mensagem(ns) do histórico<br>
+      <br>
+      ⚠️ Os registros já enviados ao Agendor <b>NÃO serão afetados</b>.
+    `,
+    detailClass: 'danger',
+    btnLabel: '🗑️ Sim, apagar tudo',
+    btnClass: 'red-solid',
+    onConfirm: async () => {
+      try{
+        await fetch(`/api/contacts/${convId}`, {method:'DELETE'});
+        toast(`Contato "${name}" apagado ✓`, 'success');
+        await loadConversations();
+        await loadContacts();
+        if(selectedConvId === convId){
+          selectedConvId = null;
+          document.getElementById('chat-view').innerHTML=`<div class="chat-empty"><div class="icon">🌎</div><p>Selecione uma conversa</p></div>`;
+          document.getElementById('lead-detail').style.display='none';
+        }
+      }catch(e){ toast('Erro ao apagar contato','error'); }
+    }
+  });
+}
+
+// ─── Notes Modal ──────────────────────────────────────────────────────────
+let editingNotesConvId = null;
+
+function openNotesModal(convId, currentNotes){
+  editingNotesConvId = convId;
+  document.getElementById('notes-textarea').value = currentNotes || '';
+  document.getElementById('notes-modal').classList.add('open');
+}
+
+function closeNotesModal(){
+  document.getElementById('notes-modal').classList.remove('open');
+  editingNotesConvId = null;
+}
+
+document.getElementById('notes-modal').addEventListener('click', function(e){
+  if(e.target === this) closeNotesModal();
+});
+
+async function saveNotes(){
+  if(!editingNotesConvId) return;
+  const notes = document.getElementById('notes-textarea').value.trim();
+  try{
+    await fetch(`/api/contacts/${editingNotesConvId}/notes`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({notes})
+    });
+    toast('Anotação salva ✓', 'success');
+    closeNotesModal();
+    await loadContacts();
+  }catch(e){ toast('Erro ao salvar anotação','error'); }
+}
+
 // ─── Utils ────────────────────────────────────────────────────────────────
 function esc(s){
   if(!s) return '';
@@ -928,6 +1336,15 @@ function esc(s){
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────
+function setPanel(name){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  if(name==='settings') loadSettingsUI();
+  if(name==='contacts') loadContacts();
+}
+
 loadStats();
 loadConversations();
 convPollInterval=setInterval(()=>{loadConversations();loadStats();},5000);
