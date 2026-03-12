@@ -32,7 +32,10 @@ log = logging.getLogger("main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    log.info("✅ Banco de dados inicializado")
+    from database import AsyncSessionLocal, _DB_BACKEND
+    async with AsyncSessionLocal() as db:
+        total = (await db.execute(select(func.count(Conversation.id)))).scalar()
+        log.info(f"✅ Banco inicializado [{_DB_BACKEND.upper()}] — {total} conversa(s) existente(s)")
     yield
 
 

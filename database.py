@@ -7,9 +7,30 @@ from sqlalchemy import String, Integer, Text, DateTime, Boolean, ForeignKey, fun
 from datetime import datetime
 from typing import Optional, List
 
-DATABASE_URL = "sqlite+aiosqlite:///./bonifacio.db"
+import os
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# ── Detecta banco automaticamente ────────────────────────────────────────────
+# Railway injeta DATABASE_URL com postgres://... quando um PostgreSQL está vinculado.
+# Localmente cai para SQLite.
+_raw_url = os.environ.get("DATABASE_URL", "")
+
+if _raw_url.startswith("postgres://") or _raw_url.startswith("postgresql://"):
+    # SQLAlchemy async precisa do driver asyncpg
+    DATABASE_URL = _raw_url.replace("postgres://", "postgresql+asyncpg://", 1) \
+                           .replace("postgresql://", "postgresql+asyncpg://", 1)
+    _DB_BACKEND = "postgresql"
+else:
+    # SQLite local (desenvolvimento)
+    _db_dir = "/data" if os.path.isdir("/data") else "."
+    DATABASE_URL = f"sqlite+aiosqlite:///{_db_dir}/bonifacio.db"
+    _DB_BACKEND = "sqlite"
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    # PostgreSQL precisa de pool; SQLite não suporta multi-thread pool
+    **({} if _DB_BACKEND == "sqlite" else {"pool_size": 5, "max_overflow": 10})
+)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
@@ -88,15 +109,17 @@ class SalespersonRotation(Base):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Migration-safe: add new columns if they don't exist (SQLite doesn't support IF NOT EXISTS for columns)
-        for col_sql in [
-            "ALTER TABLE conversations ADD COLUMN contact_notes TEXT",
-            "ALTER TABLE conversations ADD COLUMN reset_count INTEGER DEFAULT 0",
-        ]:
-            try:
-                await conn.execute(text(col_sql))
-            except Exception:
-                pass  # column already exists – that's fine
+        # Migration segura: adiciona colunas novas que podem não existir ainda.
+        # Só necessário no SQLite (PostgreSQL usa CREATE TABLE IF NOT EXISTS já com as colunas).
+        if _DB_BACKEND == "sqlite":
+            for col_sql in [
+                "ALTER TABLE conversations ADD COLUMN contact_notes TEXT",
+                "ALTER TABLE conversations ADD COLUMN reset_count INTEGER DEFAULT 0",
+            ]:
+                try:
+                    await conn.execute(text(col_sql))
+                except Exception:
+                    pass  # coluna já existe
 
 
 async def get_db():
