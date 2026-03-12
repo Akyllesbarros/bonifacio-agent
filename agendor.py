@@ -47,15 +47,41 @@ class AgendorClient:
 
     # ─── People ─────────────────────────────────────────────────────────────
     async def find_person_by_phone(self, phone: str) -> Optional[int]:
-        """Busca pessoa existente pelo telefone."""
+        """
+        Busca pessoa existente pelo telefone.
+        IMPORTANTE: valida que o telefone da pessoa encontrada realmente
+        corresponde ao buscado — o Agendor retorna matches parciais por nome/email também.
+        """
         try:
             phone_clean = "".join(c for c in phone if c.isdigit())
             data = await self._get("/people", {"q": phone_clean})
             people = data.get("data", [])
-            if people:
-                pid = people[0]["id"]
-                log.info(f"[Agendor] Pessoa encontrada pelo telefone: ID {pid}")
-                return pid
+            log.info(f"[Agendor] Busca por {phone_clean} → {len(people)} resultado(s)")
+
+            for person in people:
+                pid = person.get("id")
+                contact = person.get("contact") or {}
+
+                # Extrair todos os telefones cadastrados na pessoa
+                person_phones = []
+                for field in ("mobile", "work", "whatsapp", "phone"):
+                    val = contact.get(field) or ""
+                    # Normaliza: só dígitos
+                    digits = "".join(c for c in str(val) if c.isdigit())
+                    if digits:
+                        person_phones.append(digits)
+
+                log.info(f"[Agendor] Candidato ID={pid} | telefones={person_phones}")
+
+                # Verifica se algum telefone da pessoa termina com os mesmos dígitos
+                # (cobre diferenças de DDI: 5527... vs 27...)
+                for p in person_phones:
+                    # Compara os últimos 9 dígitos (número local sem DDI/DDD)
+                    if phone_clean[-9:] == p[-9:]:
+                        log.info(f"[Agendor] ✅ Pessoa confirmada pelo telefone: ID {pid}")
+                        return pid
+
+            log.info(f"[Agendor] Nenhuma pessoa com telefone {phone_clean} encontrada — será criada")
         except Exception as e:
             log.error(f"[Agendor] Erro ao buscar pessoa: {e}")
         return None
