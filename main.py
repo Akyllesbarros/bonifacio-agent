@@ -36,6 +36,37 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         total = (await db.execute(select(func.count(Conversation.id)))).scalar()
         log.info(f"✅ Banco inicializado [{_DB_BACKEND.upper()}] — {total} conversa(s) existente(s)")
+
+    # ── Pré-upload de áudios definidos no flow.py ────────────────────────
+    from flow import FLOW
+    from database import AsyncSessionLocal as _ASL
+    async with _ASL() as db:
+        wa_phone_id = await get_setting("wa_phone_number_id", db)
+        wa_token = await get_setting("wa_access_token", db)
+
+    app.state.media_cache = {}   # {"audio1.opus": "media_id_...", ...}
+
+    if wa_phone_id and wa_token:
+        _wa = WhatsAppClient(wa_phone_id, wa_token)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        # Coleta todos os arquivos de áudio mencionados no flow
+        audio_files = set()
+        for step in FLOW:
+            for msg in step.get("messages", []):
+                if msg.get("type") == "audio":
+                    audio_files.add(msg["file"])
+        # Faz upload de cada um
+        for fname in audio_files:
+            fpath = os.path.join(base_dir, fname)
+            if os.path.exists(fpath):
+                media_id = await _wa.upload_media(fpath, "audio/ogg; codecs=opus")
+                app.state.media_cache[fname] = media_id
+                log.info(f"✅ Áudio carregado: {fname} → {media_id}")
+            else:
+                log.warning(f"⚠️ Arquivo não encontrado: {fpath}")
+    else:
+        log.warning("⚠️ WA credentials não encontradas — áudios NÃO carregados")
+
     yield
 
 
@@ -134,78 +165,136 @@ async def wa_receive(request: Request, db: AsyncSession = Depends(get_db)):
         await db.flush()
 
     # ── Store incoming message ──────────────────────────────────────────────
-    db.add(Message(
-        conversation_id=conv.id,
-        direction="in",
-        content=text,
-        wa_message_id=wa_msg_id,
-    ))
+    db.add(Message(conversation_id=conv.id, direction="in", content=text, wa_message_id=wa_msg_id))
     await db.commit()
     await db.refresh(conv)
 
-    # ── Check global AI switch ──────────────────────────────────────────────
+    # ── Check AI switch ─────────────────────────────────────────────────────
     global_ai = await get_setting("ai_global_active", db, "true")
     if global_ai.lower() != "true" or not conv.ai_active:
         return JSONResponse({"status": "ai_paused"})
 
-    # ── Get conversation history ────────────────────────────────────────────
+    # ── Load flow + conversation history ────────────────────────────────────
+    from flow import FLOW, get_stage
     r2 = await db.execute(
-        select(Message)
-        .where(Message.conversation_id == conv.id)
-        .order_by(Message.created_at)
-        .limit(40)
+        select(Message).where(Message.conversation_id == conv.id)
+        .order_by(Message.created_at).limit(40)
     )
     history = [{"direction": m.direction, "content": m.content} for m in r2.scalars().all()]
 
-    # ── Run agent ──────────────────────────────────────────────────────────
+    # ── Resolve current stage config ────────────────────────────────────────
+    stage_cfg = get_stage(conv.stage)
+    if not stage_cfg:
+        log.warning(f"[FLOW] Stage {conv.stage} não encontrado no flow — ignorando")
+        return JSONResponse({"status": "ignored"})
+
+    stage_type = stage_cfg.get("type", "done")
+
+    # ── "done": fluxo encerrado, silêncio ───────────────────────────────────
+    if stage_type == "done":
+        return JSONResponse({"status": "done"})
+
+    # ── "send": executa envio automático e avança ───────────────────────────
+    if stage_type == "send":
+        await _execute_send(stage_cfg, phone, conv, db, request)
+        new_stage = stage_cfg.get("next", conv.stage + 1)
+        log.info(f"[STAGE] phone={phone} | stage {conv.stage} → {new_stage} | type=send")
+        conv.stage = new_stage
+        # Extrai nome do WA se ainda não tiver
+        if not conv.name:
+            conv.name = JuliaAgent.extract_name(wa_name)
+        conv.updated_at = datetime.utcnow()
+        await db.commit()
+        return JSONResponse({"status": "ok"})
+
+    # ── "listen" ou "ask": usa agente para decidir ──────────────────────────
     api_key = await get_setting("anthropic_api_key", db)
     agent = JuliaAgent(api_key)
 
-    reply, new_stage, new_name, new_tier = await agent.process_message(
-        conversation_stage=conv.stage,
-        user_name=conv.name,
-        wa_display_name=wa_name,
-        history=history[:-1],   # exclude last (just added)
+    # Atualiza nome se necessário
+    if not conv.name:
+        conv.name = JuliaAgent.extract_name(wa_name)
+
+    result = await agent.interpret(
+        stage_config=stage_cfg,
         user_message=text,
+        user_name=conv.name,
+        history=history[:-1],  # exclui a mensagem recém adicionada
     )
 
-    log.info(f"[STAGE] phone={phone} | stage {conv.stage} → {new_stage} | name={new_name!r} | tier={new_tier!r} | msg={text!r}")
-
-    # ── Update conversation ────────────────────────────────────────────────
-    if new_name:
-        conv.name = new_name
-    if new_tier:
-        conv.value_tier = new_tier
-    if conv.stage == 2 and new_stage > 2:
-        conv.investment_answer = text  # save investment status reply
-
-    conv.stage = new_stage
-    conv.updated_at = datetime.utcnow()
-
-    # ── Send reply via WhatsApp ────────────────────────────────────────────
     wa_phone_id = await get_setting("wa_phone_number_id", db)
     wa_token = await get_setting("wa_access_token", db)
     wa_client = WhatsAppClient(wa_phone_id, wa_token)
 
-    out_msg_id = await wa_client.send_text(phone, reply)
+    # Salva campo se configurado
+    save_to = stage_cfg.get("save_to")
+    if save_to and result.get("save_value"):
+        if hasattr(conv, save_to):
+            setattr(conv, save_to, result["save_value"])
 
-    db.add(Message(
-        conversation_id=conv.id,
-        direction="out",
-        content=reply,
-        wa_message_id=out_msg_id,
-    ))
-    await db.commit()
+    if result["advance"]:
+        old_stage = conv.stage
+        new_stage = stage_cfg.get("next", conv.stage + 1)
+        log.info(f"[STAGE] phone={phone} | stage {old_stage} → {new_stage} | name={conv.name!r} | msg={text!r}")
+        conv.stage = new_stage
+        conv.updated_at = datetime.utcnow()
 
-    # ── CRM sync when qualification completes ──────────────────────────────
-    if new_stage == 4 and conv.agendor_deal_id is None:
-        log.info(f"[CRM] 🚀 Disparando sync para conv_id={conv.id} phone={phone} tier={conv.value_tier!r}")
-        task = asyncio.create_task(_sync_to_agendor(conv.id))
-        task.add_done_callback(lambda t: log.error(f"[CRM] Task falhou: {t.exception()}") if not t.cancelled() and t.exception() else None)
+        # CRM sync se configurado na etapa
+        if stage_cfg.get("crm_sync") and conv.agendor_deal_id is None:
+            log.info(f"[CRM] 🚀 crm_sync=True na etapa {old_stage} — disparando sync conv_id={conv.id}")
+            task = asyncio.create_task(_sync_to_agendor(conv.id))
+            task.add_done_callback(
+                lambda t: log.error(f"[CRM] Task falhou: {t.exception()}")
+                if not t.cancelled() and t.exception() else None
+            )
+
+        # Envia a mensagem da próxima etapa se for "ask"
+        next_cfg = get_stage(new_stage)
+        if next_cfg and next_cfg.get("type") == "ask" and next_cfg.get("message"):
+            msg_id = await wa_client.send_text(phone, next_cfg["message"])
+            db.add(Message(conversation_id=conv.id, direction="out",
+                           content=next_cfg["message"], wa_message_id=msg_id))
+
+        # Ou executa "send" da próxima etapa automaticamente
+        elif next_cfg and next_cfg.get("type") == "send":
+            await _execute_send(next_cfg, phone, conv, db, request)
+            conv.stage = next_cfg.get("next", new_stage + 1)
+            log.info(f"[STAGE] phone={phone} | auto-send stage {new_stage} → {conv.stage}")
+
     else:
-        log.info(f"[CRM] Sync NÃO disparado — new_stage={new_stage}, deal_id={conv.agendor_deal_id}")
+        # Não avança — envia reply de objeção gerado pelo Claude
+        if result.get("reply"):
+            msg_id = await wa_client.send_text(phone, result["reply"])
+            db.add(Message(conversation_id=conv.id, direction="out",
+                           content=result["reply"], wa_message_id=msg_id))
 
+    await db.commit()
     return JSONResponse({"status": "ok"})
+
+
+async def _execute_send(stage_cfg: dict, phone: str, conv, db, request):
+    """Envia todas as mensagens definidas em stage_cfg['messages']."""
+    from database import AsyncSessionLocal
+    wa_phone_id = await get_setting("wa_phone_number_id", db)
+    wa_token = await get_setting("wa_access_token", db)
+    wa_client = WhatsAppClient(wa_phone_id, wa_token)
+    media_cache = getattr(request.app.state, "media_cache", {})
+    last_msg_id = None
+
+    for msg in stage_cfg.get("messages", []):
+        if msg["type"] == "audio":
+            media_id = media_cache.get(msg["file"])
+            if media_id:
+                last_msg_id = await wa_client.send_audio(phone, media_id)
+                db.add(Message(conversation_id=conv.id, direction="out",
+                               content=f"[audio:{msg['file']}]", wa_message_id=last_msg_id))
+            else:
+                log.warning(f"[FLOW] media_id não encontrado para {msg['file']}")
+        elif msg["type"] == "text":
+            last_msg_id = await wa_client.send_text(phone, msg["text"])
+            db.add(Message(conversation_id=conv.id, direction="out",
+                           content=msg["text"], wa_message_id=last_msg_id))
+    return last_msg_id
 
 
 async def _sync_to_agendor(conv_id: int):
@@ -240,7 +329,7 @@ async def _sync_to_agendor(conv_id: int):
 
             crm = AgendorClient(agendor_token)
             name = conv.name or conv.phone
-            log.info(f"[CRM] Lead: {name} | phone: {conv.phone} | tier: {conv.value_tier}")
+            log.info(f"[CRM] Lead: {name} | phone: {conv.phone}")
 
             # 1. Buscar ou criar pessoa
             log.info("[CRM] Passo 1 → get_or_create_person")
