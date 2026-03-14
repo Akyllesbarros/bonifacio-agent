@@ -41,14 +41,23 @@ FLOW: list[dict] = [
         "label": "Primeiro contato",
         "type": "send",
         "messages": [
-            {"type": "audio", "file": "audio1.opus"},
-            {"type": "audio", "file": "audio2.opus"},
+            {
+                "type": "audio",
+                "file": "audio1.opus",
+                "delay_before": 10,   # aguarda 10s antes de enviar o 1º áudio
+            },
+            {
+                "type": "audio",
+                "file": "audio2.opus",
+                "delay_before": 30,   # aguarda 30s após o 1º áudio
+            },
             {
                 "type": "text",
                 "text": (
                     "Assim eu já consigo entender se faz sentido e se é a fase ideal "
                     "pra te explicar melhor como funciona o clube por dentro 🤝"
                 ),
+                "delay_before": 10,   # aguarda 10s após o 2º áudio
             },
         ],
         "next": 1,

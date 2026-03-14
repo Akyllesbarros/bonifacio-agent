@@ -194,17 +194,21 @@ async def wa_receive(request: Request, db: AsyncSession = Depends(get_db)):
     if stage_type == "done":
         return JSONResponse({"status": "done"})
 
-    # ── "send": executa envio automático e avança ───────────────────────────
+    # ── "send": responde 200 imediatamente, envia em background ────────────
     if stage_type == "send":
-        await _execute_send(stage_cfg, phone, conv, db, request)
         new_stage = stage_cfg.get("next", conv.stage + 1)
         log.info(f"[STAGE] phone={phone} | stage {conv.stage} → {new_stage} | type=send")
         conv.stage = new_stage
-        # Extrai nome do WA se ainda não tiver
         if not conv.name:
             conv.name = JuliaAgent.extract_name(wa_name)
         conv.updated_at = datetime.utcnow()
         await db.commit()
+        # Envia em background para não bloquear o webhook (delays longos)
+        task = asyncio.create_task(_execute_send_bg(stage_cfg, phone, conv.id, request.app.state))
+        task.add_done_callback(
+            lambda t: log.error(f"[FLOW] Send task falhou: {t.exception()}")
+            if not t.cancelled() and t.exception() else None
+        )
         return JSONResponse({"status": "ok"})
 
     # ── "listen" ou "ask": usa agente para decidir ──────────────────────────
@@ -257,7 +261,7 @@ async def wa_receive(request: Request, db: AsyncSession = Depends(get_db)):
 
         # Ou executa "send" da próxima etapa automaticamente
         elif next_cfg and next_cfg.get("type") == "send":
-            await _execute_send(next_cfg, phone, conv, db, request)
+            await _execute_send(next_cfg, phone, conv, db, request.app.state)
             conv.stage = next_cfg.get("next", new_stage + 1)
             log.info(f"[STAGE] phone={phone} | auto-send stage {new_stage} → {conv.stage}")
 
@@ -272,16 +276,32 @@ async def wa_receive(request: Request, db: AsyncSession = Depends(get_db)):
     return JSONResponse({"status": "ok"})
 
 
-async def _execute_send(stage_cfg: dict, phone: str, conv, db, request):
-    """Envia todas as mensagens definidas em stage_cfg['messages']."""
+async def _execute_send_bg(stage_cfg: dict, phone: str, conv_id: int, app_state):
+    """Versão background de _execute_send — usa sua própria sessão de DB."""
     from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        r = await db.execute(select(Conversation).where(Conversation.id == conv_id))
+        conv = r.scalar_one_or_none()
+        if not conv:
+            return
+        await _execute_send(stage_cfg, phone, conv, db, app_state)
+        await db.commit()
+
+
+async def _execute_send(stage_cfg: dict, phone: str, conv, db, app_state):
+    """Envia todas as mensagens definidas em stage_cfg['messages'], com delays."""
     wa_phone_id = await get_setting("wa_phone_number_id", db)
     wa_token = await get_setting("wa_access_token", db)
     wa_client = WhatsAppClient(wa_phone_id, wa_token)
-    media_cache = getattr(request.app.state, "media_cache", {})
+    media_cache = getattr(app_state, "media_cache", {})
     last_msg_id = None
 
     for msg in stage_cfg.get("messages", []):
+        delay = msg.get("delay_before", 0)
+        if delay:
+            log.info(f"[FLOW] Aguardando {delay}s antes de enviar {msg.get('file') or 'texto'}...")
+            await asyncio.sleep(delay)
+
         if msg["type"] == "audio":
             media_id = media_cache.get(msg["file"])
             if media_id:
