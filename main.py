@@ -28,6 +28,48 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("main")
 
 
+def _build_greeting(wa_name: str | None) -> str:
+    """
+    Gera saudação baseada no horário de Brasília (UTC-3).
+    Se o nome for válido, inclui o primeiro nome: "Bom dia, Antonio!"
+    Caso contrário, só a saudação: "Bom dia!"
+    """
+    from datetime import timezone, timedelta
+    import re as _re
+
+    tz_brasilia = timezone(timedelta(hours=-3))
+    hour = datetime.now(tz_brasilia).hour
+
+    if hour < 12:
+        period = "Bom dia"
+    elif hour < 18:
+        period = "Boa tarde"
+    else:
+        period = "Boa noite"
+
+    # Valida se o nome do WA parece um nome real
+    first_name = None
+    if wa_name:
+        raw = wa_name.strip()
+        # Rejeita: emojis, strings muito curtas, nomes genéricos, só números
+        has_emoji = any(ord(c) > 9000 for c in raw)
+        generic = {"user", "lead", "cliente", "test", "teste", "undefined",
+                   "null", "whatsapp", "android", "iphone", "samsung",
+                   "motorola", "xiaomi", "redmi", "galaxy", "pixel"}
+        only_digits = raw.replace(" ", "").isdigit()
+        too_short = len(raw) < 3
+        is_generic = raw.lower() in generic
+        has_device_word = bool({w.lower() for w in raw.split()} & generic)
+        has_weird_chars = bool(_re.search(r"[^a-zA-ZÀ-ÿ\s]", raw))
+
+        if not any([has_emoji, only_digits, too_short, is_generic, has_device_word, has_weird_chars]):
+            first_name = raw.split()[0].capitalize()
+
+    if first_name:
+        return f"{period}, {first_name}!"
+    return f"{period}!"
+
+
 # ─── Lifespan ───────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -299,10 +341,16 @@ async def _execute_send(stage_cfg: dict, phone: str, conv, db, app_state):
     for msg in stage_cfg.get("messages", []):
         delay = msg.get("delay_before", 0)
         if delay:
-            log.info(f"[FLOW] Aguardando {delay}s antes de enviar {msg.get('file') or 'texto'}...")
+            log.info(f"[FLOW] Aguardando {delay}s antes de enviar {msg.get('file') or msg.get('type')}...")
             await asyncio.sleep(delay)
 
-        if msg["type"] == "audio":
+        if msg["type"] == "greeting":
+            greeting_text = _build_greeting(conv.name)
+            last_msg_id = await wa_client.send_text(phone, greeting_text)
+            db.add(Message(conversation_id=conv.id, direction="out",
+                           content=greeting_text, wa_message_id=last_msg_id))
+
+        elif msg["type"] == "audio":
             media_id = media_cache.get(msg["file"])
             if media_id:
                 last_msg_id = await wa_client.send_audio(phone, media_id)

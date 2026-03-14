@@ -42,6 +42,10 @@ FLOW: list[dict] = [
         "type": "send",
         "messages": [
             {
+                "type": "greeting",   # "Bom dia, Antonio!" / "Boa tarde!" / "Boa noite!"
+                "delay_before": 0,
+            },
+            {
                 "type": "audio",
                 "file": "audio1.opus",
                 "delay_before": 10,   # aguarda 10s antes de enviar o 1º áudio
