@@ -49,13 +49,13 @@ FLOW: list[dict] = [
                 "type": "audio",
                 "file": "audio1.mp3",
                 "mime_type": "audio/mpeg",
-                "delay_before": 10,   # aguarda 10s antes de enviar o 1º áudio
+                "delay_before": 0,   # aguarda 10s antes de enviar o 1º áudio
             },
             {
                 "type": "audio",
                 "file": "audio2.mp3",
                 "mime_type": "audio/mpeg",
-                "delay_before": 30,   # aguarda 30s após o 1º áudio
+                "delay_before": 0,   # aguarda 30s após o 1º áudio
             },
             {
                 "type": "text",
@@ -63,7 +63,7 @@ FLOW: list[dict] = [
                     "Assim eu já consigo entender se faz sentido e se é a fase ideal "
                     "pra te explicar melhor como funciona o clube por dentro 🤝"
                 ),
-                "delay_before": 10,   # aguarda 10s após o 2º áudio
+                "delay_before": 0,   # aguarda 10s após o 2º áudio
             },
         ],
         "next": 1,
