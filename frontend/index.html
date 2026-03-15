@@ -166,10 +166,8 @@ header::after{
   text-transform:uppercase;letter-spacing:.4px;
 }
 .stage-0{background:rgba(74,166,255,.15);color:var(--blue)}
-.stage-1{background:rgba(74,166,255,.15);color:var(--blue)}
-.stage-2{background:rgba(201,168,76,.15);color:var(--gold)}
-.stage-3{background:rgba(201,168,76,.15);color:var(--gold)}
-.stage-4{background:rgba(46,204,138,.15);color:var(--green)}
+.stage-1{background:rgba(46,204,138,.15);color:var(--green)}
+.stage-2{background:rgba(46,204,138,.15);color:var(--green)}
 .ai-off-badge{
   font-size:10px;padding:2px 6px;border-radius:8px;
   background:rgba(224,92,92,.15);color:var(--red);font-weight:600;
@@ -503,7 +501,7 @@ header::after{
   <div class="header-stats">
     <div class="stat-pill">Leads: <b id="stat-total">—</b></div>
     <div class="stat-pill">Qualificados: <b id="stat-qualified">—</b></div>
-    <div class="stat-pill">Em andamento: <b id="stat-inprogress">—</b></div>
+    <div class="stat-pill">Aguardando resposta: <b id="stat-inprogress">—</b></div>
     <button class="ai-toggle" id="ai-toggle-btn" onclick="toggleGlobalAI()">
       <span class="ai-dot"></span>
       <span id="ai-toggle-label">IA Global: —</span>
@@ -560,17 +558,13 @@ header::after{
         <div class="detail-title">Lead</div>
         <div class="detail-row"><div class="detail-label">Nome</div><div class="detail-value" id="d-name">—</div></div>
         <div class="detail-row"><div class="detail-label">Telefone</div><div class="detail-value" id="d-phone">—</div></div>
-        <div class="detail-row"><div class="detail-label">Faixa de Valor</div><div class="detail-value" id="d-tier">—</div></div>
       </div>
       <div class="divider"></div>
       <div class="detail-section">
         <div class="detail-title">Qualificação</div>
         <div class="stage-progress" id="d-stages">
-          <div class="progress-step" data-s="0"><div class="progress-dot"></div>Contato iniciado</div>
-          <div class="progress-step" data-s="1"><div class="progress-dot"></div>Nome coletado</div>
-          <div class="progress-step" data-s="2"><div class="progress-dot"></div>Status de investimento</div>
-          <div class="progress-step" data-s="3"><div class="progress-dot"></div>Faixa de valor</div>
-          <div class="progress-step" data-s="4"><div class="progress-dot"></div>✅ Qualificado</div>
+          <div class="progress-step" data-s="0"><div class="progress-dot"></div>📨 Contato iniciado</div>
+          <div class="progress-step" data-s="1"><div class="progress-dot"></div>✅ Qualificado</div>
         </div>
       </div>
       <div class="divider"></div>
@@ -746,6 +740,40 @@ header::after{
       </div>
     </div>
 
+      <!-- Z-API Notificações -->
+      <div class="settings-section settings-full">
+        <div class="settings-section-title">📲 Z-API – Notificações de Grupo</div>
+        <div class="settings-grid" style="margin-top:8px">
+          <div class="form-group">
+            <label class="form-label">Instance ID</label>
+            <input class="form-input" id="s-zapi-instance" placeholder="ex: 3C48F42AACD7F09FD155DE9E42240280">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Token</label>
+            <input class="form-input" type="password" id="s-zapi-token" placeholder="seu_token_zapi">
+          </div>
+          <div class="form-group">
+            <label class="form-label">ID do Grupo</label>
+            <input class="form-input" id="s-zapi-group" placeholder="ex: 120363421833302899-group">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Número de Teste</label>
+            <input class="form-input" id="s-zapi-test-number" placeholder="+5527988716039">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text2)">
+            <input type="checkbox" id="s-zapi-test-mode" onchange="toggleTestMode(this.checked)" style="width:16px;height:16px;cursor:pointer">
+            <span>🧪 Modo teste (notificações vão para o número de teste)</span>
+          </label>
+          <button class="btn" onclick="testZapiNotification()" style="margin-left:auto">
+            📤 Enviar notificação de teste
+          </button>
+        </div>
+        <div id="zapi-test-result" style="margin-top:8px;font-size:13px;color:var(--text3)"></div>
+      </div>
+    </div>
+
     <div style="display:flex;gap:12px;max-width:800px">
       <button class="save-btn" onclick="saveSettings()">💾 Salvar Configurações</button>
       <button class="btn" onclick="loadAgendorFunnels()">🔄 Recarregar funis do Agendor</button>
@@ -796,7 +824,7 @@ async function toggleGlobalAI(){
 }
 
 // ─── Conversations ────────────────────────────────────────────────────────
-const STAGE_LABELS=['Iniciado','Nome','Investimento','Valor','✅ Qualificado'];
+const STAGE_LABELS=['Contato iniciado','✅ Qualificado'];
 function stageLabel(s){return STAGE_LABELS[s]||'?'}
 
 function avatarLetter(name){
@@ -949,15 +977,18 @@ async function toggleAI(id){
 function renderLeadDetail(conv){
   document.getElementById('d-name').textContent=conv.name||'—';
   document.getElementById('d-phone').textContent=conv.phone;
-  document.getElementById('d-tier').textContent=conv.value_tier||'Não informado';
   document.getElementById('d-deal').textContent=conv.agendor_deal_id?`#${conv.agendor_deal_id}`:'Pendente';
   document.getElementById('d-seller').textContent=conv.agendor_salesperson_id?`ID ${conv.agendor_salesperson_id}`:'—';
-  // stage progress
+  // stage progress (0=iniciado, 1=qualificado)
   document.querySelectorAll('.progress-step').forEach(el=>{
     const s=parseInt(el.dataset.s);
     el.classList.remove('done','current');
-    if(s < conv.stage) el.classList.add('done');
-    else if(s === conv.stage) el.classList.add('current');
+    if(s===0){
+      if(conv.stage>=2) el.classList.add('done');
+      else el.classList.add('current');
+    } else if(s===1){
+      if(conv.stage>=2) el.classList.add('done');
+    }
   });
 }
 
@@ -995,6 +1026,11 @@ async function loadSettingsUI(){
     document.getElementById('s-anthropic-key').value=d.anthropic_api_key||'';
     document.getElementById('s-agendor-token').value=d.agendor_api_token||'';
     document.getElementById('s-salespeople-ids').value=d.agendor_salespeople_ids||'';
+    document.getElementById('s-zapi-instance').value=d.zapi_instance_id||'';
+    document.getElementById('s-zapi-token').value=d.zapi_token||'';
+    document.getElementById('s-zapi-group').value=d.zapi_group_id||'';
+    document.getElementById('s-zapi-test-number').value=d.zapi_test_number||'';
+    document.getElementById('s-zapi-test-mode').checked=d.zapi_test_mode==='true';
     document.getElementById('webhook-url').textContent=location.origin+'/webhook';
     if(d.agendor_funnel_id) {
       await loadAgendorFunnels();
@@ -1017,11 +1053,41 @@ async function saveSettings(){
     agendor_stage_initial:document.getElementById('s-stage-initial').value,
     agendor_stage_qualified:document.getElementById('s-stage-qualified').value,
     agendor_salespeople_ids:document.getElementById('s-salespeople-ids').value,
+    zapi_instance_id:document.getElementById('s-zapi-instance').value,
+    zapi_token:document.getElementById('s-zapi-token').value,
+    zapi_group_id:document.getElementById('s-zapi-group').value,
+    zapi_test_number:document.getElementById('s-zapi-test-number').value,
+    zapi_test_mode:String(document.getElementById('s-zapi-test-mode').checked),
   };
   try{
     await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     toast('Configurações salvas com sucesso ✓','success');
   }catch(e){toast('Erro ao salvar','error')}
+}
+
+function toggleTestMode(checked){
+  const el = document.getElementById('zapi-test-result');
+  el.textContent = checked
+    ? '🧪 Modo teste ativo — notificações vão para o número de teste'
+    : '';
+}
+
+async function testZapiNotification(){
+  const res = document.getElementById('zapi-test-result');
+  res.textContent = '⏳ Enviando notificação de teste…';
+  try{
+    const d = await fetch('/api/zapi/test',{method:'POST'}).then(r=>r.json());
+    if(d.status==='ok'){
+      res.innerHTML=`<span style="color:var(--green)">✅ Enviado com sucesso para ${d.destination}</span>`;
+      toast('Notificação de teste enviada ✓','success');
+    } else {
+      res.innerHTML=`<span style="color:var(--red)">❌ Falha ao enviar. Verifique as credenciais.</span>`;
+      toast('Falha no teste','error');
+    }
+  }catch(e){
+    res.innerHTML=`<span style="color:var(--red)">❌ Erro na requisição</span>`;
+    toast('Erro','error');
+  }
 }
 
 async function reloadStages(){
@@ -1140,7 +1206,6 @@ function renderContacts(list){
           <div class="contact-card-phone">📱 ${c.phone}</div>
           <div class="contact-card-badges">
             <span class="stage-badge stage-${c.stage}">${stageLabel(c.stage)}</span>
-            ${c.value_tier?`<span class="stage-badge stage-4">${tier}</span>`:''}
             ${resetBadge}
           </div>
         </div>
@@ -1244,6 +1309,10 @@ async function confirmReset(convId, name, dealId){
     onConfirm: async () => {
       try{
         const r = await fetch(`/api/conversations/${convId}/reset`, {method:'POST'});
+        if(r.status === 404){
+          toast('Conversa não encontrada — pode ter sido apagada. Recarregando…', 'error');
+          await loadConversations(); await loadContacts(); return;
+        }
         const d = await r.json();
         toast(`Conversa resetada — ${d.messages_deleted} msg(s) apagadas ✓`, 'success');
         await loadConversations();

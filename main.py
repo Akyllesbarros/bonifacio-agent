@@ -23,6 +23,7 @@ from database import (
 from agendor import AgendorClient
 from whatsapp import WhatsAppClient, parse_incoming_message
 from agent import JuliaAgent
+from zapi import ZAPIClient, build_notification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("main")
@@ -140,6 +141,11 @@ async def get_setting(key: str, db: AsyncSession, default: str = "") -> str:
         "agendor_stage_qualified": str(settings.agendor_stage_qualified),
         "agendor_salespeople_ids": settings.agendor_salespeople_ids,
         "ai_global_active": "true",
+        "zapi_instance_id": "",
+        "zapi_token": "",
+        "zapi_group_id": "",
+        "zapi_test_mode": "false",
+        "zapi_test_number": "",
     }
     return env_map.get(key, default)
 
@@ -449,8 +455,45 @@ async def _sync_to_agendor(conv_id: int):
             await db.commit()
             log.info(f"[CRM] ✅ SYNC COMPLETO — person={person_id} deal={deal_id} seller={salesperson_id}")
 
+            # 7. Notificação Z-API
+            await _send_zapi_notification(conv.name or conv.phone, conv.phone, messages, db)
+
     except Exception as e:
         log.exception(f"[CRM] ❌ Exceção inesperada no sync: {e}")
+
+
+async def _send_zapi_notification(name: str, phone: str, messages: list, db: AsyncSession):
+    """Envia notificação de novo lead qualificado via Z-API."""
+    instance_id = await get_setting("zapi_instance_id", db)
+    token = await get_setting("zapi_token", db)
+    group_id = await get_setting("zapi_group_id", db)
+    test_mode = (await get_setting("zapi_test_mode", db, "false")).lower() == "true"
+    test_number = await get_setting("zapi_test_number", db)
+
+    if not instance_id or not token:
+        log.warning("[ZAPI] Credenciais não configuradas — notificação ignorada")
+        return
+
+    # Destino: modo teste → número pessoal, produção → grupo
+    if test_mode and test_number:
+        destination = test_number.replace("+", "").replace(" ", "")
+        log.info(f"[ZAPI] 🧪 Modo teste — enviando para {destination}")
+    elif group_id:
+        destination = group_id
+    else:
+        log.warning("[ZAPI] group_id não configurado — notificação ignorada")
+        return
+
+    # Última mensagem do lead (direction=in)
+    last_in = next((m["content"] for m in reversed(messages) if m["direction"] == "in"), "—")
+
+    msg = build_notification(name, phone, last_in)
+    zapi = ZAPIClient(instance_id, token)
+    ok = await zapi.send_text(destination, msg)
+    if ok:
+        log.info(f"[ZAPI] ✅ Notificação enviada — destino={destination}")
+    else:
+        log.error(f"[ZAPI] ❌ Falha ao enviar notificação")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -559,11 +602,12 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         "anthropic_api_key", "wa_phone_number_id", "wa_access_token",
         "wa_verify_token", "agendor_api_token", "agendor_funnel_id",
         "agendor_stage_initial", "agendor_stage_qualified", "agendor_salespeople_ids",
+        "zapi_instance_id", "zapi_token", "zapi_group_id",
+        "zapi_test_mode", "zapi_test_number",
     ]
     result = {}
     for key in keys:
         val = await get_setting(key, db)
-        # Mask sensitive keys
         if "token" in key or "key" in key:
             result[key] = ("*" * 8 + val[-4:]) if len(val) > 4 else ("*" * len(val))
         else:
@@ -578,11 +622,37 @@ async def save_settings(request: Request, db: AsyncSession = Depends(get_db)):
         "anthropic_api_key", "wa_phone_number_id", "wa_access_token",
         "wa_verify_token", "agendor_api_token", "agendor_funnel_id",
         "agendor_stage_initial", "agendor_stage_qualified", "agendor_salespeople_ids",
+        "zapi_instance_id", "zapi_token", "zapi_group_id",
+        "zapi_test_mode", "zapi_test_number",
     ]
     for key, val in body.items():
-        if key in allowed and val and not val.startswith("****"):
+        if key in allowed and val is not None and not str(val).startswith("****"):
             await set_setting(key, str(val), db)
     return {"status": "saved"}
+
+
+@app.post("/api/zapi/test")
+async def zapi_test_notification(db: AsyncSession = Depends(get_db)):
+    """Envia uma notificação de teste via Z-API."""
+    instance_id = await get_setting("zapi_instance_id", db)
+    token = await get_setting("zapi_token", db)
+    test_number = await get_setting("zapi_test_number", db)
+    group_id = await get_setting("zapi_group_id", db)
+    test_mode = (await get_setting("zapi_test_mode", db, "false")).lower() == "true"
+
+    if not instance_id or not token:
+        raise HTTPException(400, "Credenciais Z-API não configuradas")
+
+    destination = (test_number.replace("+", "").replace(" ", "")
+                   if test_mode and test_number else group_id)
+    if not destination:
+        raise HTTPException(400, "Configure o grupo ou número de teste")
+
+    from zapi import build_notification
+    msg = build_notification("Teste Lead", "5527999999999", "Esta é uma mensagem de teste 🧪")
+    zapi = ZAPIClient(instance_id, token)
+    ok = await zapi.send_text(destination, msg)
+    return {"status": "ok" if ok else "error", "destination": destination}
 
 
 # ─── Agendor helpers (for settings UI) ─────────────────────────────────────
@@ -729,16 +799,16 @@ async def update_contact_notes(conv_id: int, request: Request, db: AsyncSession 
 async def get_stats(db: AsyncSession = Depends(get_db)):
     total = (await db.execute(select(func.count(Conversation.id)))).scalar()
     qualified = (await db.execute(
-        select(func.count(Conversation.id)).where(Conversation.stage == 4)
+        select(func.count(Conversation.id)).where(Conversation.stage >= 2)
     )).scalar()
-    in_progress = (await db.execute(
-        select(func.count(Conversation.id)).where(Conversation.stage < 4, Conversation.stage > 0)
+    initiated = (await db.execute(
+        select(func.count(Conversation.id)).where(Conversation.stage < 2)
     )).scalar()
     ai_on = await get_setting("ai_global_active", db, "true")
     return {
         "total_leads": total,
         "qualified": qualified,
-        "in_progress": in_progress,
+        "in_progress": initiated,
         "ai_global_active": ai_on == "true",
     }
 
