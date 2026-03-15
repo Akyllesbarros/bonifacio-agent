@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
     app.state.media_cache = {}   # {"audio1.opus": "media_id_...", ...}
 
     if wa_phone_id and wa_token:
-        log.info(f"✅ WA credentials OK — phone_id={wa_phone_id[:6]}... token={'✅' if wa_token else '❌ VAZIO'}")
+        log.info(f"✅ WA credentials OK — phone_id={wa_phone_id} | token_len={len(wa_token)}")
         _wa = WhatsAppClient(wa_phone_id, wa_token)
         base_dir = os.path.dirname(os.path.abspath(__file__))
         # Coleta todos os arquivos de áudio mencionados no flow
@@ -134,10 +134,26 @@ async def root():
 async def get_setting(key: str, db: AsyncSession, default: str = "") -> str:
     r = await db.execute(select(AppSetting).where(AppSetting.key == key))
     row = r.scalar_one_or_none()
-    if row:
+    if row and row.value:
         return row.value
-    # fallback to env/config
-    env_map = {
+    # fallback: pydantic settings → os.environ direto (mais confiável no Railway)
+    env_name_map = {
+        "anthropic_api_key": "ANTHROPIC_API_KEY",
+        "wa_phone_number_id": "WA_PHONE_NUMBER_ID",
+        "wa_access_token": "WA_ACCESS_TOKEN",
+        "wa_verify_token": "WA_VERIFY_TOKEN",
+        "agendor_api_token": "AGENDOR_API_TOKEN",
+        "agendor_funnel_id": "AGENDOR_FUNNEL_ID",
+        "agendor_stage_initial": "AGENDOR_STAGE_INITIAL",
+        "agendor_stage_qualified": "AGENDOR_STAGE_QUALIFIED",
+        "agendor_salespeople_ids": "AGENDOR_SALESPEOPLE_IDS",
+    }
+    if key in env_name_map:
+        val = os.environ.get(env_name_map[key], "")
+        if val:
+            return val
+    # fallback final: pydantic settings
+    pydantic_map = {
         "anthropic_api_key": settings.anthropic_api_key,
         "wa_phone_number_id": settings.wa_phone_number_id,
         "wa_access_token": settings.wa_access_token,
@@ -154,7 +170,7 @@ async def get_setting(key: str, db: AsyncSession, default: str = "") -> str:
         "zapi_test_mode": "false",
         "zapi_test_number": "",
     }
-    return env_map.get(key, default)
+    return pydantic_map.get(key, default)
 
 
 async def set_setting(key: str, value: str, db: AsyncSession):

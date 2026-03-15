@@ -166,7 +166,7 @@ header::after{
   text-transform:uppercase;letter-spacing:.4px;
 }
 .stage-0{background:rgba(74,166,255,.15);color:var(--blue)}
-.stage-1{background:rgba(46,204,138,.15);color:var(--green)}
+.stage-1{background:rgba(201,168,76,.15);color:var(--gold)}
 .stage-2{background:rgba(46,204,138,.15);color:var(--green)}
 .ai-off-badge{
   font-size:10px;padding:2px 6px;border-radius:8px;
@@ -564,7 +564,8 @@ header::after{
         <div class="detail-title">Qualificação</div>
         <div class="stage-progress" id="d-stages">
           <div class="progress-step" data-s="0"><div class="progress-dot"></div>📨 Contato iniciado</div>
-          <div class="progress-step" data-s="1"><div class="progress-dot"></div>✅ Qualificado</div>
+          <div class="progress-step" data-s="1"><div class="progress-dot"></div>⏳ Aguardando resposta</div>
+          <div class="progress-step" data-s="2"><div class="progress-dot"></div>✅ Qualificado</div>
         </div>
       </div>
       <div class="divider"></div>
@@ -823,7 +824,7 @@ async function toggleGlobalAI(){
 }
 
 // ─── Conversations ────────────────────────────────────────────────────────
-const STAGE_LABELS=['Contato iniciado','✅ Qualificado'];
+const STAGE_LABELS=['Contato iniciado','⏳ Aguardando resposta','✅ Qualificado'];
 function stageLabel(s){return STAGE_LABELS[s]||'?'}
 
 function avatarLetter(name){
@@ -985,16 +986,12 @@ function renderLeadDetail(conv){
   document.getElementById('d-phone').textContent=conv.phone;
   document.getElementById('d-deal').textContent=conv.agendor_deal_id?`#${conv.agendor_deal_id}`:'Pendente';
   document.getElementById('d-seller').textContent=conv.agendor_salesperson_id?`ID ${conv.agendor_salesperson_id}`:'—';
-  // stage progress (0=iniciado, 1=qualificado)
+  // stage progress (0=iniciado, 1=aguardando, 2=qualificado)
   document.querySelectorAll('.progress-step').forEach(el=>{
     const s=parseInt(el.dataset.s);
     el.classList.remove('done','current');
-    if(s===0){
-      if(conv.stage>=2) el.classList.add('done');
-      else el.classList.add('current');
-    } else if(s===1){
-      if(conv.stage>=2) el.classList.add('done');
-    }
+    if(s < conv.stage) el.classList.add('done');
+    else if(s === conv.stage) el.classList.add('current');
   });
 }
 
