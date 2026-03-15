@@ -80,6 +80,28 @@ async def lifespan(app: FastAPI):
         total = (await db.execute(select(func.count(Conversation.id)))).scalar()
         log.info(f"✅ Banco inicializado [{_DB_BACKEND.upper()}] — {total} conversa(s) existente(s)")
 
+    # ── Download dos áudios se não existirem localmente ──────────────────
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    AUDIO_URLS = {
+        "audio1.mp3": "https://raw.githubusercontent.com/Akyllesbarros/bonifacio-agent/7c521ff9f72324c29bc036d3c2e2a7cd13edda11/audio1.mp3",
+        "audio2.mp3": "https://raw.githubusercontent.com/Akyllesbarros/bonifacio-agent/7c521ff9f72324c29bc036d3c2e2a7cd13edda11/audio2.mp3",
+    }
+    for fname, url in AUDIO_URLS.items():
+        fpath = os.path.join(base_dir, fname)
+        if not os.path.exists(fpath):
+            log.info(f"[AUDIO] Baixando {fname} de {url}...")
+            try:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    r = await client.get(url)
+                    r.raise_for_status()
+                    with open(fpath, "wb") as f:
+                        f.write(r.content)
+                log.info(f"✅ {fname} baixado ({len(r.content)//1024}KB)")
+            except Exception as e:
+                log.error(f"❌ Falha ao baixar {fname}: {e}")
+        else:
+            log.info(f"✅ {fname} já existe localmente")
+
     # ── Pré-upload de áudios definidos no flow.py ────────────────────────
     from flow import FLOW
     from database import AsyncSessionLocal as _ASL
@@ -87,12 +109,11 @@ async def lifespan(app: FastAPI):
         wa_phone_id = await get_setting("wa_phone_number_id", db)
         wa_token = await get_setting("wa_access_token", db)
 
-    app.state.media_cache = {}   # {"audio1.opus": "media_id_...", ...}
+    app.state.media_cache = {}   # {"audio1.mp3": "media_id_...", ...}
 
     if wa_phone_id and wa_token:
         log.info(f"✅ WA credentials OK — phone_id={wa_phone_id} | token_len={len(wa_token)}")
         _wa = WhatsAppClient(wa_phone_id, wa_token)
-        base_dir = os.path.dirname(os.path.abspath(__file__))
         # Coleta todos os arquivos de áudio mencionados no flow
         audio_files = set()
         for step in FLOW:
@@ -102,7 +123,6 @@ async def lifespan(app: FastAPI):
         # Faz upload de cada um
         for fname in audio_files:
             fpath = os.path.join(base_dir, fname)
-            # Busca mime_type definido no flow, default opus
             mime = "audio/ogg; codecs=opus"
             for step in FLOW:
                 for msg in step.get("messages", []):
@@ -113,7 +133,7 @@ async def lifespan(app: FastAPI):
                 app.state.media_cache[fname] = media_id
                 log.info(f"✅ Áudio carregado: {fname} ({mime}) → {media_id}")
             else:
-                log.warning(f"⚠️ Arquivo não encontrado: {fpath}")
+                log.warning(f"⚠️ Arquivo não encontrado após download: {fpath}")
     else:
         log.warning("⚠️ WA credentials não encontradas — áudios NÃO carregados")
 
