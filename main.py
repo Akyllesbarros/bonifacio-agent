@@ -101,10 +101,16 @@ async def lifespan(app: FastAPI):
         # Faz upload de cada um
         for fname in audio_files:
             fpath = os.path.join(base_dir, fname)
+            # Busca mime_type definido no flow, default opus
+            mime = "audio/ogg; codecs=opus"
+            for step in FLOW:
+                for msg in step.get("messages", []):
+                    if msg.get("file") == fname and msg.get("mime_type"):
+                        mime = msg["mime_type"]
             if os.path.exists(fpath):
-                media_id = await _wa.upload_media(fpath, "audio/ogg; codecs=opus")
+                media_id = await _wa.upload_media(fpath, mime)
                 app.state.media_cache[fname] = media_id
-                log.info(f"✅ Áudio carregado: {fname} → {media_id}")
+                log.info(f"✅ Áudio carregado: {fname} ({mime}) → {media_id}")
             else:
                 log.warning(f"⚠️ Arquivo não encontrado: {fpath}")
     else:

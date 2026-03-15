@@ -47,12 +47,14 @@ FLOW: list[dict] = [
             },
             {
                 "type": "audio",
-                "file": "audio1.opus",
+                "file": "audio1.mp3",
+                "mime_type": "audio/mpeg",
                 "delay_before": 10,   # aguarda 10s antes de enviar o 1º áudio
             },
             {
                 "type": "audio",
-                "file": "audio2.opus",
+                "file": "audio2.mp3",
+                "mime_type": "audio/mpeg",
                 "delay_before": 30,   # aguarda 30s após o 1º áudio
             },
             {

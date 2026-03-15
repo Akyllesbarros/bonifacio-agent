@@ -887,16 +887,20 @@ async function selectConv(id){
   const conv=conversations.find(c=>c.id===id);
   if(!conv) return;
   renderConversations(conversations);
-  loadMessages(id, conv);
+  loadMessages(id);
   renderLeadDetail(conv);
   if(msgPollInterval) clearInterval(msgPollInterval);
-  msgPollInterval=setInterval(()=>loadMessages(id,conv),3000);
+  msgPollInterval=setInterval(()=>loadMessages(id),3000);
 }
 
-async function loadMessages(id, conv){
+async function loadMessages(id){
   try{
+    // Sempre pega o conv mais recente do array de conversas
+    const conv=conversations.find(c=>c.id===id);
+    if(!conv) return;
     const msgs=await fetch(`/api/conversations/${id}/messages`).then(r=>r.json());
     renderMessages(msgs, conv);
+    renderLeadDetail(conv);  // atualiza painel direito a cada poll
   }catch(e){}
 }
 
@@ -956,8 +960,7 @@ async function sendManual(id){
   try{
     await fetch(`/api/conversations/${id}/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
     await loadConversations();
-    const conv=conversations.find(c=>c.id===id);
-    if(conv) await loadMessages(id,conv);
+    if(selectedConvId) loadMessages(id);
   }catch(e){toast('Erro ao enviar mensagem','error')}
 }
 
@@ -967,8 +970,7 @@ async function toggleAI(id){
     toast(d.ai_active?'IA reativada para este contato ✓':'IA pausada para este contato ✓',
           d.ai_active?'success':'');
     await loadConversations();
-    const conv=conversations.find(c=>c.id===id);
-    if(conv) renderMessages(await fetch(`/api/conversations/${id}/messages`).then(r=>r.json()), conv);
+    if(selectedConvId) loadMessages(selectedConvId);
   }catch(e){toast('Erro','error')}
 }
 
