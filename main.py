@@ -90,6 +90,7 @@ async def lifespan(app: FastAPI):
     app.state.media_cache = {}   # {"audio1.opus": "media_id_...", ...}
 
     if wa_phone_id and wa_token:
+        log.info(f"✅ WA credentials OK — phone_id={wa_phone_id[:6]}... token={'✅' if wa_token else '❌ VAZIO'}")
         _wa = WhatsAppClient(wa_phone_id, wa_token)
         base_dir = os.path.dirname(os.path.abspath(__file__))
         # Coleta todos os arquivos de áudio mencionados no flow

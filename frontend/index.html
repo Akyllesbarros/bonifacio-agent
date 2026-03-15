@@ -925,12 +925,17 @@ function renderMessages(msgs, conv){
       </div>
     </div>
     <div class="messages-container" id="msg-container">
-      ${msgs.map(m=>`
+    ${msgs.map(m=>{
+        const isAudio = m.content.startsWith('[audio:');
+        const bubble = isAudio
+          ? `<span style="display:flex;align-items:center;gap:6px">🎵 <span style="font-size:12px;opacity:.8">Áudio enviado</span></span>`
+          : esc(m.content);
+        return `
         <div class="msg ${m.direction}">
-          <div class="msg-bubble">${esc(m.content)}</div>
+          <div class="msg-bubble">${bubble}</div>
           <div class="msg-time">${formatTime(m.created_at)}</div>
-        </div>
-      `).join('')}
+        </div>`;
+      }).join('')}
     </div>
     <div class="chat-input-area" ${conv.ai_active?'style="opacity:.6"':''}>
       <textarea class="chat-textarea" id="manual-input" rows="1"

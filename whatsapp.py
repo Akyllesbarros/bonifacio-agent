@@ -39,13 +39,15 @@ class WhatsAppClient:
                     headers=self._headers,
                     json=body,
                 )
-                r.raise_for_status()
+                if r.status_code != 200:
+                    log.error(f"[WA] Erro ao enviar texto HTTP {r.status_code}: {r.text[:300]}")
+                    return None
                 data = r.json()
                 msg_id = data.get("messages", [{}])[0].get("id")
                 log.info(f"[WA] Mensagem enviada para {phone}: {msg_id}")
                 return msg_id
         except Exception as e:
-            log.error(f"[WA] Erro ao enviar mensagem: {e}")
+            log.error(f"[WA] Erro ao enviar mensagem: {type(e).__name__}: {e}")
             return None
 
     async def send_text_bulk(self, to: str, text: str) -> Optional[str]:
@@ -70,7 +72,7 @@ class WhatsAppClient:
                 log.info(f"[WA] Mídia enviada: {file_path} → media_id={media_id}")
                 return media_id
         except Exception as e:
-            log.error(f"[WA] Erro ao fazer upload de mídia: {e}")
+            log.error(f"[WA] Erro ao fazer upload de mídia: {type(e).__name__}: {e}")
             return None
 
     async def send_audio(self, to: str, media_id: str) -> Optional[str]:
